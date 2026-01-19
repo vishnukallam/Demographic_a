@@ -10,7 +10,7 @@ import { Feature } from 'ol';
 import { Point } from 'ol/geom';
 import { Style, Icon, Circle, Fill, Stroke, Text } from 'ol/style';
 import { fromLonLat, toLonLat } from 'ol/proj';
-import axios from 'axios';
+import api from '../api';
 import { Box, TextField, Button, Paper } from '@mui/material';
 import { AuthContext } from '../context/AuthContext';
 
@@ -62,7 +62,7 @@ const MapComponent = () => {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const res = await axios.get('/api/user/nearby');
+                const res = await api.get('/api/user/nearby');
                 userSource.clear();
                 res.data.forEach(u => {
                     if (u.location && u.location.coordinates && u._id !== user?._id) {
@@ -112,7 +112,7 @@ const MapComponent = () => {
 
                 // Update Backend
                 try {
-                    await axios.post('/api/user/location', { latitude, longitude });
+                    await api.post('/api/user/location', { latitude, longitude });
                 } catch(err) {
                     console.error("Error updating location", err);
                 }
@@ -140,7 +140,7 @@ const MapComponent = () => {
             };
 
             // Save to Legacy JSON
-            await axios.post('/api/locations', locationDetails);
+            await api.post('/api/locations', locationDetails);
 
             // Marker
             markerSource.clear();

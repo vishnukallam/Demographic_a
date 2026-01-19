@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import axios from 'axios';
+import api from '../api';
 import io from 'socket.io-client';
 import { Box, List, ListItem, ListItemText, ListItemAvatar, Avatar, TextField, Button, Paper, Typography, Divider, ListItemButton } from '@mui/material';
 
@@ -14,7 +14,8 @@ const Chat = () => {
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
-        socketRef.current = io('http://localhost:3000');
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        socketRef.current = io(apiUrl);
         socketRef.current.emit('join', user._id);
 
         socketRef.current.on('new_message', (data) => {
@@ -40,7 +41,7 @@ const Chat = () => {
     useEffect(() => {
         const fetchChats = async () => {
             try {
-                const res = await axios.get('/api/chats');
+                const res = await api.get('/api/chats');
                 setChats(res.data);
             } catch (err) {
                 console.error(err);
@@ -53,7 +54,7 @@ const Chat = () => {
         if (activeChat) {
             const fetchMessages = async () => {
                 try {
-                    const res = await axios.get(`/api/chats/${activeChat._id}/messages`);
+                    const res = await api.get(`/api/chats/${activeChat._id}/messages`);
                     setMessages(res.data);
                 } catch(err) {
                     console.error(err);
@@ -71,7 +72,7 @@ const Chat = () => {
     const handleSend = async () => {
         if (!newMessage.trim() || !activeChat) return;
         try {
-            await axios.post(`/api/chats/${activeChat._id}/messages`, { text: newMessage });
+            await api.post(`/api/chats/${activeChat._id}/messages`, { text: newMessage });
             setNewMessage('');
         } catch(err) {
             console.error(err);

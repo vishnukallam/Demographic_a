@@ -4,8 +4,8 @@ import GoogleIcon from '@mui/icons-material/Google';
 
 const Login = () => {
     const handleLogin = () => {
-        // Use relative path since we have proxy, but full URL is safer for redirects
-        window.location.href = 'http://localhost:3000/auth/google';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        window.location.href = `${apiUrl}/auth/google`;
     };
 
     return (

@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { Container, TextField, Button, Typography, Box, Chip, Autocomplete, Alert } from '@mui/material';
-import axios from 'axios';
+import api from '../api';
 import { useNavigate } from 'react-router-dom';
 
 const Profile = () => {
@@ -20,7 +20,7 @@ const Profile = () => {
              return;
         }
 
-        axios.get('/api/interests').then(res => {
+        api.get('/api/interests').then(res => {
             setAvailableInterests(res.data);
         }).catch(err => console.error(err));
 
@@ -30,7 +30,7 @@ const Profile = () => {
         e.preventDefault();
         try {
             const interestsToSave = selectedInterests.map(i => typeof i === 'string' ? i : i.name);
-            const res = await axios.put('/api/user/profile', {
+            const res = await api.put('/api/user/profile', {
                 name,
                 about,
                 interests: interestsToSave

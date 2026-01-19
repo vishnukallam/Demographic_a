@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: social-map-backend
+    env: node
+    region: ohio
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    rootDir: server
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: COOKIE_KEY
+        generateValue: true
+      - key: PORT
+        value: 10000

@@ -15,7 +15,8 @@ const Navigation = () => {
 
     useEffect(() => {
         if (user) {
-            socketRef.current = io('http://localhost:3000');
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            socketRef.current = io(apiUrl);
             socketRef.current.emit('join', user._id);
 
             socketRef.current.on('match_notification', (data) => {
@@ -27,7 +28,8 @@ const Navigation = () => {
     }, [user]);
 
     const handleLogout = () => {
-        window.location.href = 'http://localhost:3000/auth/logout';
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        window.location.href = `${apiUrl}/auth/logout`;
     };
 
     return (

@@ -7,12 +7,14 @@ router.get('/google', passport.authenticate('google', {
 
 router.get('/google/callback', passport.authenticate('google'), (req, res) => {
   // Redirect to frontend after login
-  res.redirect('http://localhost:5173/profile');
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  res.redirect(`${clientUrl}/profile`);
 });
 
 router.get('/logout', (req, res) => {
   req.logout();
-  res.redirect('http://localhost:5173');
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  res.redirect(clientUrl);
 });
 
 router.get('/current_user', (req, res) => {
