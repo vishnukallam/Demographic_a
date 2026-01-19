@@ -1,11 +1,24 @@
 {
-  "name": "social-map-root",
+  "name": "social-map-app",
   "version": "1.0.0",
-  "description": "Root package.json for deployment bridges",
+  "description": "Social Map Application (MERN)",
+  "main": "server/index.js",
   "scripts": {
-    "start": "cd server && node index.js",
-    "build": "cd server && npm install",
-    "build-client": "cd client && npm install && npm run build"
+    "start": "node server/index.js",
+    "build": "cd client && npm install && npm run build && rm -rf ../dist && mv dist ../dist",
+    "dev": "concurrently \"npm start\" \"cd client && npm run dev\""
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.1",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "mongoose": "^9.1.4",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "socket.io": "^4.8.3",
+    "concurrently": "^8.2.0"
   },
   "engines": {
     "node": ">=18.x"

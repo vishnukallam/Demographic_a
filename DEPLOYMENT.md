@@ -14,11 +14,10 @@ This project is configured to be deployed as two separate services:
     *   Click **New +** -> **Web Service**.
     *   Connect your GitHub repository.
 3.  **Configure Service**:
-    *   **Root Directory**: Leave blank (uses repo root) OR set to `server`.
-        *   *Note*: A root `package.json` has been added to handle the build even if you leave this blank.
+    *   **Root Directory**: Leave blank (default to repo root).
     *   **Runtime**: `Node`
-    *   **Build Command**: `npm run build` (This runs `cd server && npm install`)
-    *   **Start Command**: `npm start` (This runs `cd server && node index.js`)
+    *   **Build Command**: `npm install` (Installs dependencies from root `package.json`)
+    *   **Start Command**: `npm start` (Runs `node server/index.js`)
 4.  **Environment Variables**:
     Add the following environment variables in the Render dashboard:
     *   `MONGO_URI`: Your MongoDB connection string (e.g., from MongoDB Atlas).
@@ -38,11 +37,10 @@ This project is configured to be deployed as two separate services:
     *   Click **Add New...** -> **Project**.
     *   Import the same GitHub repository.
 2.  **Configure Project**:
-    *   **Root Directory**: **IMPORTANT**: Click "Edit" and select `client`.
-        *   *If you miss this step, Vercel will fail with a 404 error.*
-    *   **Framework Preset**: Vite (should be auto-detected).
-    *   **Build Command**: `npm run build`
-    *   **Output Directory**: `dist`
+    *   **Root Directory**: Leave as default (repo root).
+    *   **Framework Preset**: Vite (should be auto-detected, or select Other).
+    *   **Build Command**: `npm run build` (This runs `cd client && npm install && npm run build` and moves `dist` to root).
+    *   **Output Directory**: `dist` (default).
 3.  **Environment Variables**:
     Add the following environment variable:
     *   `VITE_API_URL`: The **Render Backend URL** you copied in Part 1 (e.g., `https://social-map-backend.onrender.com`).
