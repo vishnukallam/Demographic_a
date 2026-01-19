@@ -1,0 +1,13 @@
+{
+  "name": "social-map-root",
+  "version": "1.0.0",
+  "description": "Root package.json for deployment bridges",
+  "scripts": {
+    "start": "cd server && node index.js",
+    "build": "cd server && npm install",
+    "build-client": "cd client && npm install && npm run build"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
