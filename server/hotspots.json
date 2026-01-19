@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Midtown Manhattan",
+    "latitude": 40.7580,
+    "longitude": -73.9855,
+    "radius": 10000
+  },
+  {
+    "name": "Downtown Brooklyn",
+    "latitude": 40.6960,
+    "longitude": -73.9840,
+    "radius": 10000
+  },
+  {
+    "name": "Harlem",
+    "latitude": 40.8115,
+    "longitude": -73.9465,
+    "radius": 10000
+  }
+]
