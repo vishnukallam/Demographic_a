@@ -1,14 +1,15 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import MapComponent from './components/Map';
 import Chat from './components/Chat';
-import { AppBar, Toolbar, Typography, Button, Snackbar, Alert, Box } from '@mui/material';
+import Layout from './components/Layout';
+import { Snackbar, Alert } from '@mui/material';
 import io from 'socket.io-client';
 
-const Navigation = () => {
+const GlobalNotifications = () => {
     const { user } = useContext(AuthContext);
     const [notification, setNotification] = useState(null);
     const socketRef = useRef();
@@ -27,49 +28,24 @@ const Navigation = () => {
         }
     }, [user]);
 
-    const handleLogout = () => {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        window.location.href = `${apiUrl}/auth/logout`;
-    };
-
     return (
-        <>
-            <AppBar position="static">
-                <Toolbar>
-                    <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                        Social Map
-                    </Typography>
-                    {user ? (
-                        <>
-                            <Button color="inherit" component={Link} to="/map">Map</Button>
-                            <Button color="inherit" component={Link} to="/chat">Chat</Button>
-                            <Button color="inherit" component={Link} to="/profile">Profile</Button>
-                            <Button color="inherit" onClick={handleLogout}>Logout</Button>
-                        </>
-                    ) : (
-                        <Button color="inherit" component={Link} to="/">Login</Button>
-                    )}
-                </Toolbar>
-            </AppBar>
-
-            <Snackbar
-                open={!!notification}
-                autoHideDuration={6000}
-                onClose={() => setNotification(null)}
-                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-            >
-                <Alert onClose={() => setNotification(null)} severity="success" sx={{ width: '100%' }}>
-                    {notification}
-                </Alert>
-            </Snackbar>
-        </>
+        <Snackbar
+            open={!!notification}
+            autoHideDuration={6000}
+            onClose={() => setNotification(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+            <Alert onClose={() => setNotification(null)} severity="success" sx={{ width: '100%' }}>
+                {notification}
+            </Alert>
+        </Snackbar>
     );
 };
 
 const ProtectedRoute = ({ children }) => {
     const { user, loading } = useContext(AuthContext);
     if (loading) return <div>Loading...</div>;
-    if (!user) return <Navigate to="/" />;
+    if (!user) return <Navigate to="/login" />;
     return children;
 };
 
@@ -77,14 +53,14 @@ const App = () => {
     return (
         <AuthProvider>
             <BrowserRouter>
-                <Navigation />
-                <Box sx={{ p: 2 }}>
+                <Layout>
+                    <GlobalNotifications />
                     <Routes>
-                        <Route path="/" element={<Login />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/map" element={
+                        <Route path="/" element={<MapComponent />} />
+                        <Route path="/login" element={<LoginWrapper />} />
+                        <Route path="/profile" element={
                             <ProtectedRoute>
-                                <MapComponent />
+                                <Profile />
                             </ProtectedRoute>
                         } />
                         <Route path="/chat" element={
@@ -93,10 +69,17 @@ const App = () => {
                             </ProtectedRoute>
                         } />
                     </Routes>
-                </Box>
+                </Layout>
             </BrowserRouter>
         </AuthProvider>
     );
+};
+
+const LoginWrapper = () => {
+    const { user, loading } = useContext(AuthContext);
+    if (loading) return <div>Loading...</div>;
+    if (user) return <Navigate to="/" />;
+    return <Login />;
 };
 
 export default App;

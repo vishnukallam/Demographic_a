@@ -97,7 +97,18 @@ router.put('/profile', requireLogin, async (req, res) => {
 router.get('/nearby', async (req, res) => {
     try {
         const users = await User.find({});
-        res.send(users);
+        if (req.user) {
+            // Authenticated: Return full details (excluding sensitive auth info if needed)
+            res.send(users);
+        } else {
+            // Unauthenticated: Return sanitized data
+            const sanitized = users.map(u => ({
+                _id: u._id,
+                location: u.location,
+                interests: u.interests
+            }));
+            res.send(sanitized);
+        }
     } catch(err) {
         res.status(500).send(err);
     }
