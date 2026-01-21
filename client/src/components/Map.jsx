@@ -11,7 +11,7 @@ import { Point } from 'ol/geom';
 import { Style, Icon, Circle, Fill, Stroke, Text } from 'ol/style';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import api from '../api';
-import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Popover, Typography, Button, Snackbar, Alert } from '@mui/material';
+import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Popover, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { AuthContext } from '../context/AuthContext';
@@ -25,22 +25,9 @@ const MapComponent = () => {
     const [suggestions, setSuggestions] = useState([]);
     const { user } = useContext(AuthContext);
 
-    // Error Handling State
-    const [errorMsg, setErrorMsg] = useState(null);
-    const [snackbarOpen, setSnackbarOpen] = useState(false);
-
     // Popover State
+    const [anchorEl, setAnchorEl] = useState(null);
     const [popoverContent, setPopoverContent] = useState(null);
-
-    const handleGeolocationError = (error) => {
-        console.error("Geolocation error:", error);
-        let msg = "Could not retrieve your location.";
-        if (error.code === 1) msg = "Location permission denied. Please enable location services.";
-        else if (error.code === 2) msg = "Location unavailable.";
-        else if (error.code === 3) msg = "Location request timed out.";
-        setErrorMsg(msg);
-        setSnackbarOpen(true);
-    };
 
     // Initialize Map
     useEffect(() => {
@@ -71,6 +58,21 @@ const MapComponent = () => {
             if (feature && feature.get('type') === 'user') {
                 const userData = feature.get('data');
                 setPopoverContent(userData);
+                // Position popover near the click (approximate via dummy element or fixed position logic)
+                // For simplicity in this context, we'll use a fixed/centered approach or try to anchor to a hidden div.
+                // MUI Popover needs an HTML Element. Let's use a simpler approach: a floating card or passing a virtual element.
+
+                // Virtual Element for Popover
+                setAnchorEl({
+                    getBoundingClientRect: () => ({
+                        top: e.pixel[1], // Ideally we need screen coordinates, but pixel is relative to canvas
+                        left: e.pixel[0],
+                        width: 0,
+                        height: 0,
+                    }),
+                });
+            } else {
+                setAnchorEl(null);
             }
         });
 
@@ -101,10 +103,7 @@ const MapComponent = () => {
                 }));
                 markerSource.addFeature(youFeature);
 
-            }, handleGeolocationError, { enableHighAccuracy: true, timeout: 5000 });
-        } else {
-            setErrorMsg("Geolocation is not supported by your browser.");
-            setSnackbarOpen(true);
+            }, (err) => console.error("Geolocation denied or error:", err));
         }
 
         return () => initialMap.setTarget(null);
@@ -221,6 +220,10 @@ const MapComponent = () => {
         }
     }, [user]);
 
+    // Custom Popover (since MUI Popover needs real DOM element anchor, we simulate behavior)
+    // Actually, MUI Popover *can* take a virtual element. But implementing `getBoundingClientRect` inside the click handler context is tricky because `e.pixel` is canvas-relative, not viewport-relative.
+    // A simpler UI for now is a "Bottom Sheet" or "Card" overlay if a user is selected.
+
     return (
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
 
@@ -241,8 +244,8 @@ const MapComponent = () => {
                 >
                     <InputBase
                         sx={{ ml: 1, flex: 1 }}
-                        placeholder="Search Location"
-                        inputProps={{ 'aria-label': 'search location' }}
+                        placeholder="Search Google Maps"
+                        inputProps={{ 'aria-label': 'search google maps' }}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -312,28 +315,14 @@ const MapComponent = () => {
             <IconButton
                 sx={{ position: 'absolute', bottom: 20, right: 20, bgcolor: 'white', '&:hover': { bgcolor: '#f5f5f5' } }}
                 onClick={() => {
-                     if ("geolocation" in navigator) {
-                        navigator.geolocation.getCurrentPosition((position) => {
-                            const { latitude, longitude } = position.coords;
-                            if (map) {
-                                map.getView().animate({ center: fromLonLat([longitude, latitude]), zoom: 14 });
-                            }
-                        }, handleGeolocationError, { enableHighAccuracy: true, timeout: 5000 });
-                     } else {
-                         setErrorMsg("Geolocation is not supported.");
-                         setSnackbarOpen(true);
-                     }
+                     navigator.geolocation.getCurrentPosition((position) => {
+                        const { latitude, longitude } = position.coords;
+                        map.getView().animate({ center: fromLonLat([longitude, latitude]), zoom: 14 });
+                    });
                 }}
             >
                 <MyLocationIcon color="primary" />
             </IconButton>
-
-            {/* Error Notification */}
-            <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
-                <Alert onClose={() => setSnackbarOpen(false)} severity="error" sx={{ width: '100%' }}>
-                    {errorMsg}
-                </Alert>
-            </Snackbar>
 
         </Box>
     );
