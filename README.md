@@ -38,8 +38,7 @@ Create a `.env` file in the root directory. You can use the example below:
 
 ```env
 # Database
-# For local development, you can use a local instance or your Atlas URI
-MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/
+MONGO_URI=mongodb://127.0.0.1:27017/mapData
 
 # Authentication (Google OAuth)
 # Get these from https://console.cloud.google.com/
@@ -79,7 +78,7 @@ This repository is configured for deployment on [Render](https://render.com/).
 2.  Connect your GitHub repository.
 3.  Render will automatically detect the `render.yaml` configuration.
 4.  **Important:** You must manually set the Environment Variables in the Render Dashboard under "Environment":
-    - `MONGO_URI`: Your production MongoDB Atlas connection string.
+    - `MONGO_URI`: Your production MongoDB connection string.
     - `GOOGLE_CLIENT_ID`: Production Google Client ID.
     - `GOOGLE_CLIENT_SECRET`: Production Google Client Secret.
     - `CLIENT_URL`: The URL of your deployed Frontend (e.g., `https://your-app.vercel.app`).
