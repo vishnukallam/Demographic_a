@@ -8,7 +8,13 @@ const socketIo = require('socket.io');
 const passport = require('passport');
 const cookieSession = require('cookie-session');
 const csv = require('csv-parser');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+console.log('Environment Variables Loaded:');
+console.log('MONGO_URI:', !!process.env.MONGO_URI);
+console.log('GOOGLE_CLIENT_ID:', !!process.env.GOOGLE_CLIENT_ID);
+console.log('GOOGLE_CLIENT_SECRET:', !!process.env.GOOGLE_CLIENT_SECRET);
+
 require('./config/passport');
 
 const app = express();
