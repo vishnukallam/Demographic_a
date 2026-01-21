@@ -11,9 +11,15 @@ export const AuthProvider = ({ children }) => {
         const fetchUser = async () => {
             try {
                 const res = await api.get('/auth/current_user');
-                setUser(res.data);
+                // Ensure we don't set empty objects or unexpected truthy values as user
+                if (res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
+                    setUser(res.data);
+                } else {
+                    setUser(null);
+                }
             } catch (err) {
                 console.error(err);
+                setUser(null);
             } finally {
                 setLoading(false);
             }

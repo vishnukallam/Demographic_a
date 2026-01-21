@@ -5,8 +5,8 @@ services:
     region: ohio
     plan: free
     buildCommand: npm install
-    startCommand: node index.js
-    rootDir: server
+    startCommand: npm start
+    rootDir: .
     envVars:
       - key: MONGO_URI
         sync: false
@@ -16,5 +16,7 @@ services:
         sync: false
       - key: COOKIE_KEY
         generateValue: true
+      - key: CLIENT_URL
+        sync: false
       - key: PORT
         value: 10000

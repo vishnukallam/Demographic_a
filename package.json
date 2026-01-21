@@ -2,6 +2,7 @@
   "name": "social-map-app",
   "version": "1.0.0",
   "description": "Social Map Application (MERN)",
+  "license": "MIT",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",

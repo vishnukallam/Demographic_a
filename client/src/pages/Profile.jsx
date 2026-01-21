@@ -37,7 +37,7 @@ const Profile = () => {
             });
             setUser(res.data);
             setMsg('Profile updated successfully!');
-            setTimeout(() => navigate('/map'), 1000);
+            setTimeout(() => navigate('/'), 1000);
         } catch (err) {
             console.error(err);
             setMsg('Error updating profile');
