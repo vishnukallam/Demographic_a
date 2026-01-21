@@ -1,35 +1,39 @@
 import React, { createContext, useState, useEffect } from 'react';
-import api from '../api';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
+    // "User" is now just the guest profile: { name: string, interests: [] }
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchUser = async () => {
+        // Check local storage for existing guest session
+        const storedUser = localStorage.getItem('guest_user');
+        if (storedUser) {
             try {
-                const res = await api.get('/auth/current_user');
-                // Ensure we don't set empty objects or unexpected truthy values as user
-                if (res.data && typeof res.data === 'object' && Object.keys(res.data).length > 0) {
-                    setUser(res.data);
-                } else {
-                    setUser(null);
-                }
-            } catch (err) {
-                console.error(err);
-                setUser(null);
-            } finally {
-                setLoading(false);
+                setUser(JSON.parse(storedUser));
+            } catch (e) {
+                console.error("Failed to parse guest user", e);
             }
-        };
-        fetchUser();
+        }
+        setLoading(false);
     }, []);
+
+    const loginGuest = (userData) => {
+        setUser(userData);
+        localStorage.setItem('guest_user', JSON.stringify(userData));
+    };
+
+    const logoutGuest = () => {
+        setUser(null);
+        localStorage.removeItem('guest_user');
+    };
 
     const value = {
         user,
-        setUser,
+        setUser: loginGuest,
+        logout: logoutGuest,
         loading
     };
 

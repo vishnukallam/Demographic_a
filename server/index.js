@@ -1,21 +1,11 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
-const passport = require('passport');
-const cookieSession = require('cookie-session');
 const csv = require('csv-parser');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-
-console.log('Environment Variables Loaded:');
-console.log('MONGO_URI:', !!process.env.MONGO_URI);
-console.log('GOOGLE_CLIENT_ID:', !!process.env.GOOGLE_CLIENT_ID);
-console.log('GOOGLE_CLIENT_SECRET:', !!process.env.GOOGLE_CLIENT_SECRET);
-
-require('./config/passport');
 
 const app = express();
 const server = http.createServer(app);
@@ -26,40 +16,137 @@ const io = socketIo(server, {
   }
 });
 
-io.on('connection', (socket) => {
-  console.log('New client connected', socket.id);
-
-  socket.on('join', (userId) => {
-    if (userId) {
-      socket.join(userId);
-      console.log(`User ${userId} joined room ${userId}`);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
-});
-
 // Middleware
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        // Allow any localhost origin
+        if (origin.startsWith('http://localhost')) return callback(null, true);
+        if (origin === process.env.CLIENT_URL) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+    },
     credentials: true
 }));
 app.use(express.json());
-app.use(
-  cookieSession({
-    maxAge: 30 * 24 * 60 * 60 * 1000,
-    keys: [process.env.COOKIE_KEY || 'secret_key']
-  })
-);
-app.use(passport.initialize());
-app.use(passport.session());
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/mapData')
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('Could not connect to MongoDB', err));
+// In-Memory User Store
+// Map<socketId, { socketId, name, interests: [], location: {lat, lng} }>
+const users = new Map();
+
+// Calculate distance between two points in km
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  var R = 6371; // Radius of the earth in km
+  var dLat = deg2rad(lat2-lat1);  // deg2rad below
+  var dLon = deg2rad(lon2-lon1);
+  var a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+    ;
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  var d = R * c; // Distance in km
+  return d;
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI/180)
+}
+
+io.on('connection', (socket) => {
+  console.log('New client connected', socket.id);
+
+  // Register User
+  socket.on('register_user', (userData) => {
+    // userData: { name, interests: [], location: {lat, lng} }
+    users.set(socket.id, { ...userData, socketId: socket.id });
+    console.log(`User registered: ${userData.name} (${socket.id})`);
+
+    // Broadcast updated user list to relevant users (naive: broadcast to all for now, optimized later)
+    broadcastNearbyUsers();
+  });
+
+  // Update Location
+  socket.on('update_location', (location) => {
+    const user = users.get(socket.id);
+    if (user) {
+      user.location = location;
+      users.set(socket.id, user);
+      broadcastNearbyUsers();
+    }
+  });
+
+  // Chat Join
+  socket.on('join_chat', (targetSocketId) => {
+      // Logic for joining a private room
+      const roomId = [socket.id, targetSocketId].sort().join('_');
+      socket.join(roomId);
+      const sender = users.get(socket.id);
+      const senderName = sender ? sender.name : 'Someone';
+
+      // Notify target user to join
+      io.to(targetSocketId).emit('chat_request', {
+          from: socket.id,
+          fromName: senderName,
+          roomId
+      });
+      socket.emit('chat_joined', { roomId });
+  });
+
+  socket.on('accept_chat', ({ roomId }) => {
+      socket.join(roomId);
+  });
+
+  socket.on('send_message', ({ roomId, message, toName }) => {
+      io.to(roomId).emit('receive_message', {
+          text: message,
+          senderId: socket.id,
+          senderName: users.get(socket.id)?.name || 'Anonymous',
+          timestamp: new Date()
+      });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected', socket.id);
+    users.delete(socket.id);
+    broadcastNearbyUsers();
+  });
+});
+
+function broadcastNearbyUsers() {
+    // For each user, find nearby users with shared interests
+    users.forEach((currentUser, socketId) => {
+        const nearby = [];
+        users.forEach((otherUser, otherSocketId) => {
+            if (socketId === otherSocketId) return; // Skip self
+
+            if (currentUser.location && otherUser.location) {
+                const dist = getDistanceFromLatLonInKm(
+                    currentUser.location.lat, currentUser.location.lng,
+                    otherUser.location.lat, otherUser.location.lng
+                );
+
+                if (dist <= 10) { // 10km radius
+                    // Check shared interests
+                    const sharedInterests = currentUser.interests.filter(i =>
+                        otherUser.interests.some(oi => oi.name === i.name)
+                    );
+
+                    if (sharedInterests.length > 0) {
+                        nearby.push({
+                            socketId: otherUser.socketId,
+                            name: otherUser.name,
+                            interests: otherUser.interests, // Or just shared ones
+                            location: otherUser.location,
+                            distance: dist
+                        });
+                    }
+                }
+            }
+        });
+        io.to(socketId).emit('nearby_users', nearby);
+    });
+}
 
 // Load Interests
 const interests = [];
@@ -77,41 +164,6 @@ fs.createReadStream(path.join(__dirname, 'Interests.csv'))
   });
 
 app.set('interests', interests);
-app.set('io', io);
-
-// Legacy Location Logic
-const JSON_FILE_PATH = path.join(__dirname, 'locations.json');
-function handleJsonUpdate(newData) {
-  fs.readFile(JSON_FILE_PATH, 'utf8', (err, data) => {
-    let jsonArray = [];
-    if (!err && data) {
-      try {
-        jsonArray = JSON.parse(data);
-      } catch (e) {
-        jsonArray = [];
-      }
-    }
-    jsonArray.push(newData);
-    fs.writeFile(JSON_FILE_PATH, JSON.stringify(jsonArray, null, 2), (writeErr) => {
-      if (writeErr) console.error("Error writing JSON:", writeErr);
-    });
-  });
-}
-
-// Route Imports
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user');
-const chatRoutes = require('./routes/chat');
-
-app.use('/auth', authRoutes);
-app.use('/api/user', userRoutes);
-app.use('/api/chats', chatRoutes);
-
-// Legacy Route for Search Logging
-app.post('/api/locations', (req, res) => {
-  handleJsonUpdate(req.body);
-  res.status(200).send({ status: 'saved' });
-});
 
 // Get Interests Endpoint
 app.get('/api/interests', (req, res) => {

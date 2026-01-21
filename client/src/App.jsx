@@ -1,52 +1,81 @@
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
-import Login from './pages/Login';
-import Profile from './pages/Profile';
 import MapComponent from './components/Map';
-import Chat from './components/Chat';
 import Layout from './components/Layout';
-import { Snackbar, Alert } from '@mui/material';
+import { Snackbar, Alert, Dialog, DialogTitle, DialogContent, TextField, Button, Box, Autocomplete, Chip } from '@mui/material';
 import io from 'socket.io-client';
+import axios from 'axios';
 
-const GlobalNotifications = () => {
-    const { user } = useContext(AuthContext);
-    const [notification, setNotification] = useState(null);
-    const socketRef = useRef();
+// --- Global Notifications (moved inside App for context access) ---
+// (We might remove this if no matching logic exists on server yet, but keeping structure)
+
+// --- Welcome Modal for Guest Registration ---
+const WelcomeModal = () => {
+    const { user, setUser } = useContext(AuthContext);
+    const [name, setName] = useState('');
+    const [selectedInterests, setSelectedInterests] = useState([]);
+    const [availableInterests, setAvailableInterests] = useState([]);
 
     useEffect(() => {
-        if (user) {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-            socketRef.current = io(apiUrl);
-            socketRef.current.emit('join', user._id);
+        // Fetch interests from API (which now reads CSV)
+        const fetchInterests = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const res = await axios.get(`${apiUrl}/api/interests`);
+                setAvailableInterests(res.data);
+            } catch (err) {
+                console.error("Failed to load interests", err);
+            }
+        };
+        fetchInterests();
+    }, []);
 
-            socketRef.current.on('match_notification', (data) => {
-                setNotification(data.message);
-            });
-
-            return () => socketRef.current.disconnect();
+    const handleJoin = () => {
+        if (name && selectedInterests.length > 0) {
+            setUser({ name, interests: selectedInterests });
         }
-    }, [user]);
+    };
+
+    if (user) return null; // Don't show if already "logged in"
 
     return (
-        <Snackbar
-            open={!!notification}
-            autoHideDuration={6000}
-            onClose={() => setNotification(null)}
-            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        >
-            <Alert onClose={() => setNotification(null)} severity="success" sx={{ width: '100%' }}>
-                {notification}
-            </Alert>
-        </Snackbar>
-    );
-};
+        <Dialog open={true} disableEscapeKeyDown>
+            <DialogTitle>Welcome to Demographic</DialogTitle>
+            <DialogContent>
+                <Box component="form" sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <TextField
+                        label="Your Name"
+                        fullWidth
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                    />
 
-const ProtectedRoute = ({ children }) => {
-    const { user, loading } = useContext(AuthContext);
-    if (loading) return <div>Loading...</div>;
-    if (!user) return <Navigate to="/login" />;
-    return children;
+                    <Autocomplete
+                        multiple
+                        options={availableInterests}
+                        getOptionLabel={(option) => option.name}
+                        value={selectedInterests}
+                        onChange={(event, newValue) => {
+                            setSelectedInterests(newValue);
+                        }}
+                        renderInput={(params) => (
+                            <TextField {...params} label="Select Interests" placeholder="Interests" />
+                        )}
+                        renderTags={(tagValue, getTagProps) =>
+                            tagValue.map((option, index) => (
+                                <Chip label={option.name} {...getTagProps({ index })} />
+                            ))
+                        }
+                    />
+
+                    <Button variant="contained" onClick={handleJoin} disabled={!name || selectedInterests.length === 0}>
+                        Join Nearby Community
+                    </Button>
+                </Box>
+            </DialogContent>
+        </Dialog>
+    );
 };
 
 const App = () => {
@@ -54,32 +83,15 @@ const App = () => {
         <AuthProvider>
             <BrowserRouter>
                 <Layout>
-                    <GlobalNotifications />
+                    <WelcomeModal />
                     <Routes>
                         <Route path="/" element={<MapComponent />} />
-                        <Route path="/login" element={<LoginWrapper />} />
-                        <Route path="/profile" element={
-                            <ProtectedRoute>
-                                <Profile />
-                            </ProtectedRoute>
-                        } />
-                        <Route path="/chat" element={
-                            <ProtectedRoute>
-                                <Chat />
-                            </ProtectedRoute>
-                        } />
+                        <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
                 </Layout>
             </BrowserRouter>
         </AuthProvider>
     );
-};
-
-const LoginWrapper = () => {
-    const { user, loading } = useContext(AuthContext);
-    if (loading) return <div>Loading...</div>;
-    if (user) return <Navigate to="/" />;
-    return <Login />;
 };
 
 export default App;

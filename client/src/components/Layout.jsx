@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
 const Layout = ({ children }) => {
-    const { user } = useContext(AuthContext);
+    const { user, logout } = useContext(AuthContext);
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [anchorEl, setAnchorEl] = useState(null);
@@ -20,18 +20,10 @@ const Layout = ({ children }) => {
     };
 
     const handleLogout = () => {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        window.location.href = `${apiUrl}/auth/logout`;
+        logout();
+        navigate('/');
         handleClose();
     };
-
-    const navLinks = [
-        { title: 'Map', path: '/' },
-        ...(user ? [
-            { title: 'Chat', path: '/chat' },
-            { title: 'Profile', path: '/profile' }
-        ] : [])
-    ];
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -67,29 +59,15 @@ const Layout = ({ children }) => {
                                 open={Boolean(anchorEl)}
                                 onClose={handleClose}
                             >
-                                {navLinks.map((link) => (
-                                    <MenuItem key={link.title} onClick={() => { navigate(link.path); handleClose(); }}>
-                                        {link.title}
-                                    </MenuItem>
-                                ))}
-                                {user ? (
+                                {user && (
                                     <MenuItem onClick={handleLogout}>Logout</MenuItem>
-                                ) : (
-                                    <MenuItem onClick={() => { navigate('/login'); handleClose(); }}>Login</MenuItem>
                                 )}
                             </Menu>
                         </>
                     ) : (
                         <Box sx={{ display: 'flex', gap: 2 }}>
-                            {navLinks.map((link) => (
-                                <Button key={link.title} color="inherit" component={Link} to={link.path}>
-                                    {link.title}
-                                </Button>
-                            ))}
-                            {user ? (
+                            {user && (
                                 <Button color="inherit" onClick={handleLogout}>Logout</Button>
-                            ) : (
-                                <Button color="inherit" component={Link} to="/login">Login</Button>
                             )}
                         </Box>
                     )}

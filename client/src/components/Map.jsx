@@ -10,24 +10,89 @@ import { Feature } from 'ol';
 import { Point } from 'ol/geom';
 import { Style, Icon, Circle, Fill, Stroke, Text } from 'ol/style';
 import { fromLonLat, toLonLat } from 'ol/proj';
-import api from '../api';
-import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Popover, Typography } from '@mui/material';
+import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Typography, Button, Snackbar, Alert } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import ChatIcon from '@mui/icons-material/Chat';
 import { AuthContext } from '../context/AuthContext';
+import io from 'socket.io-client';
+import ChatOverlay from './ChatOverlay';
 
 const MapComponent = () => {
     const mapRef = useRef();
     const [map, setMap] = useState(null);
-    const [markerSource] = useState(new VectorSource()); // User location / Search result
-    const [userSource] = useState(new VectorSource()); // Nearby users
+    const [userSource] = useState(new VectorSource());
     const [searchQuery, setSearchQuery] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const { user } = useContext(AuthContext);
+    const socketRef = useRef(null);
+
+    // Error Handling State
+    const [errorMsg, setErrorMsg] = useState(null);
+    const [snackbarOpen, setSnackbarOpen] = useState(false);
 
     // Popover State
-    const [anchorEl, setAnchorEl] = useState(null);
-    const [popoverContent, setPopoverContent] = useState(null);
+    const [selectedUser, setSelectedUser] = useState(null);
+    // Chat State
+    const [chatTarget, setChatTarget] = useState(null);
+
+    useEffect(() => {
+        // Socket Connection
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        socketRef.current = io(apiUrl);
+
+        if (user) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const { latitude, longitude } = pos.coords;
+                socketRef.current.emit('register_user', {
+                    name: user.name,
+                    interests: user.interests,
+                    location: { lat: latitude, lng: longitude }
+                });
+            }, (err) => console.error(err));
+        }
+
+        socketRef.current.on('nearby_users', (nearbyUsers) => {
+            userSource.clear();
+            nearbyUsers.forEach(u => {
+                const feature = new Feature({
+                    geometry: new Point(fromLonLat([u.location.lng, u.location.lat])),
+                    type: 'user',
+                    data: u
+                });
+
+                feature.setStyle(new Style({
+                    image: new Circle({
+                        radius: 10,
+                        fill: new Fill({ color: '#1976d2' }),
+                        stroke: new Stroke({ color: 'white', width: 2 })
+                    }),
+                    text: new Text({
+                        text: u.name,
+                        offsetY: -20,
+                        font: '12px sans-serif',
+                        fill: new Fill({ color: '#333' }),
+                        backgroundFill: new Fill({ color: 'rgba(255,255,255,0.8)' }),
+                        padding: [2, 2, 2, 2]
+                    })
+                }));
+                userSource.addFeature(feature);
+            });
+        });
+
+        // Listen for incoming chat requests
+        socketRef.current.on('chat_request', ({ from, fromName, roomId }) => {
+            // Auto-accept/Open for MVP simplicity
+            setChatTarget({
+                socketId: from,
+                name: fromName,
+                roomId: roomId // Pass roomId directly so Overlay knows
+            });
+            socketRef.current.emit('accept_chat', { roomId });
+        });
+
+        return () => socketRef.current.disconnect();
+    }, [user, userSource]);
 
     // Initialize Map
     useEffect(() => {
@@ -35,14 +100,7 @@ const MapComponent = () => {
             target: mapRef.current,
             layers: [
                 new TileLayer({ source: new OSM() }),
-                new VectorLayer({
-                    source: markerSource,
-                    zIndex: 10
-                }),
-                new VectorLayer({
-                    source: userSource,
-                    zIndex: 5
-                })
+                new VectorLayer({ source: userSource, zIndex: 10 })
             ],
             view: new View({
                 center: fromLonLat([-74.006, 40.7128]), // Default NYC
@@ -56,110 +114,36 @@ const MapComponent = () => {
         initialMap.on('click', (e) => {
             const feature = initialMap.forEachFeatureAtPixel(e.pixel, (f) => f);
             if (feature && feature.get('type') === 'user') {
-                const userData = feature.get('data');
-                setPopoverContent(userData);
-                // Position popover near the click (approximate via dummy element or fixed position logic)
-                // For simplicity in this context, we'll use a fixed/centered approach or try to anchor to a hidden div.
-                // MUI Popover needs an HTML Element. Let's use a simpler approach: a floating card or passing a virtual element.
-
-                // Virtual Element for Popover
-                setAnchorEl({
-                    getBoundingClientRect: () => ({
-                        top: e.pixel[1], // Ideally we need screen coordinates, but pixel is relative to canvas
-                        left: e.pixel[0],
-                        width: 0,
-                        height: 0,
-                    }),
-                });
+                setSelectedUser(feature.get('data'));
             } else {
-                setAnchorEl(null);
+                setSelectedUser(null);
             }
         });
 
-        // Initial Geolocation
+        // Initial Geolocation & Watch
         if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition((position) => {
+            const watchId = navigator.geolocation.watchPosition((position) => {
                 const { latitude, longitude } = position.coords;
-                const coord = fromLonLat([longitude, latitude]);
-                initialMap.getView().animate({ center: coord, zoom: 14 });
+                // Update server
+                if (socketRef.current) {
+                    socketRef.current.emit('update_location', { lat: latitude, lng: longitude });
+                }
+            }, (error) => {
+                console.error("Geolocation error:", error);
+            }, { enableHighAccuracy: true });
 
-                // Add "You" marker
-                const youFeature = new Feature({
-                    geometry: new Point(coord)
-                });
-                youFeature.setStyle(new Style({
-                    image: new Circle({
-                        radius: 8,
-                        fill: new Fill({ color: '#2e7d32' }),
-                        stroke: new Stroke({ color: 'white', width: 2 })
-                    }),
-                    text: new Text({
-                        text: 'You',
-                        offsetY: -15,
-                        font: 'bold 12px sans-serif',
-                        fill: new Fill({ color: '#2e7d32' }),
-                        stroke: new Stroke({ color: 'white', width: 2 })
-                    })
-                }));
-                markerSource.addFeature(youFeature);
+            // Center on load
+            navigator.geolocation.getCurrentPosition((pos) => {
+                initialMap.getView().animate({ center: fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 14 });
+            });
 
-            }, (err) => console.error("Geolocation denied or error:", err));
+            return () => navigator.geolocation.clearWatch(watchId);
         }
 
         return () => initialMap.setTarget(null);
-    }, []);
+    }, [userSource]);
 
-    // Fetch Nearby Users
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                const res = await api.get('/api/user/nearby');
-                userSource.clear();
-
-                res.data.forEach(u => {
-                    if (u.location && u.location.coordinates && u._id !== user?._id) {
-                        const [lon, lat] = u.location.coordinates;
-                        const feature = new Feature({
-                            geometry: new Point(fromLonLat([lon, lat])),
-                            type: 'user',
-                            data: u // Attach user data
-                        });
-
-                        // Dynamic Style based on Auth
-                        const color = user ? '#1976d2' : '#757575'; // Blue if logged in, Grey if guest
-
-                        feature.setStyle(new Style({
-                            image: new Circle({
-                                radius: 8,
-                                fill: new Fill({ color: color }),
-                                stroke: new Stroke({ color: 'white', width: 2 })
-                            }),
-                            text: new Text({
-                                text: user ? (u.name || 'User') : 'Guest', // Hide name if not logged in
-                                offsetY: -15,
-                                font: '12px sans-serif',
-                                fill: new Fill({ color: '#333' }),
-                                backgroundFill: new Fill({ color: 'rgba(255,255,255,0.8)' }),
-                                padding: [2, 2, 2, 2]
-                            })
-                        }));
-
-                        userSource.addFeature(feature);
-                    }
-                });
-            } catch (err) {
-                console.error("Error fetching users:", err);
-            }
-        };
-
-        if (map) {
-            fetchUsers();
-            const interval = setInterval(fetchUsers, 10000);
-            return () => clearInterval(interval);
-        }
-    }, [map, user, userSource]);
-
-    // Search Logic
+    // Search Logic (Same as before)
     useEffect(() => {
         const delayDebounceFn = setTimeout(async () => {
             if (searchQuery.length > 2) {
@@ -182,79 +166,26 @@ const MapComponent = () => {
         const lat = parseFloat(place.lat);
         const lon = parseFloat(place.lon);
         const coord = fromLonLat([lon, lat]);
-
         map.getView().animate({ center: coord, zoom: 14 });
-
-        // Add Marker
-        const feature = new Feature({
-             geometry: new Point(coord)
-        });
-        feature.setStyle(new Style({
-             image: new Icon({
-                anchor: [0.5, 1],
-                src: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-                scale: 0.05,
-            })
-        }));
-
-        // Clear previous search markers (keep 'You' marker if implementing distinct sources/layers or filtering)
-        // For simplicity, we just add to the same source. Ideally, 'You' marker should be separate.
-        markerSource.addFeature(feature);
-
         setSuggestions([]);
-        setSearchQuery(place.display_name.split(',')[0]); // Shorten name
+        setSearchQuery(place.display_name.split(',')[0]);
     };
 
-    // Live Location Update (Logged In Only)
-    useEffect(() => {
-        if ("geolocation" in navigator && user) {
-            const watchId = navigator.geolocation.watchPosition(async (position) => {
-                const { latitude, longitude } = position.coords;
-                try {
-                    await api.post('/api/user/location', { latitude, longitude });
-                } catch(err) {
-                    // silent fail
-                }
-            }, null, { enableHighAccuracy: true });
-            return () => navigator.geolocation.clearWatch(watchId);
+    const handleStartChat = () => {
+        if (selectedUser) {
+            setChatTarget(selectedUser);
+            setSelectedUser(null); // Close popover
         }
-    }, [user]);
-
-    // Custom Popover (since MUI Popover needs real DOM element anchor, we simulate behavior)
-    // Actually, MUI Popover *can* take a virtual element. But implementing `getBoundingClientRect` inside the click handler context is tricky because `e.pixel` is canvas-relative, not viewport-relative.
-    // A simpler UI for now is a "Bottom Sheet" or "Card" overlay if a user is selected.
+    };
 
     return (
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-
             {/* Search Bar */}
-            <Box sx={{
-                position: 'absolute',
-                top: 20,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 100,
-                width: '90%',
-                maxWidth: 400
-            }}>
-                <Paper
-                    component="form"
-                    sx={{ p: '2px 4px', display: 'flex', alignItems: 'center' }}
-                    onSubmit={(e) => e.preventDefault()}
-                >
-                    <InputBase
-                        sx={{ ml: 1, flex: 1 }}
-                        placeholder="Search Google Maps"
-                        inputProps={{ 'aria-label': 'search google maps' }}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <IconButton type="button" sx={{ p: '10px' }} aria-label="search">
-                        <SearchIcon />
-                    </IconButton>
+            <Box sx={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100, width: '90%', maxWidth: 400 }}>
+                <Paper component="form" sx={{ p: '2px 4px', display: 'flex', alignItems: 'center' }} onSubmit={(e) => e.preventDefault()}>
+                    <InputBase sx={{ ml: 1, flex: 1 }} placeholder="Search Location" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    <IconButton type="button" sx={{ p: '10px' }}> <SearchIcon /> </IconButton>
                 </Paper>
-
-                {/* Suggestions List */}
                 {suggestions.length > 0 && (
                     <Paper sx={{ mt: 1, maxHeight: 200, overflow: 'auto' }}>
                         <List dense>
@@ -271,59 +202,43 @@ const MapComponent = () => {
                 )}
             </Box>
 
-            {/* Map Container */}
             <div ref={mapRef} style={{ width: '100%', height: '100%' }}></div>
 
-            {/* User Info Card (Overlay) */}
-            {popoverContent && (
-                <Paper sx={{
-                    position: 'absolute',
-                    bottom: 20,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    zIndex: 100,
-                    p: 2,
-                    minWidth: 250,
-                    textAlign: 'center'
-                }}>
-                    {user ? (
-                        <>
-                            <Typography variant="h6">{popoverContent.name}</Typography>
-                            <Typography variant="body2" color="text.secondary">{popoverContent.about || "No bio available."}</Typography>
-                            <Box sx={{ mt: 1 }}>
-                                {popoverContent.interests && popoverContent.interests.map((int, i) => (
-                                    <Typography key={i} variant="caption" sx={{ display: 'inline-block', bgcolor: '#eee', borderRadius: 1, px: 1, mr: 0.5 }}>
-                                        {typeof int === 'string' ? int : int.name}
-                                    </Typography>
-                                ))}
-                            </Box>
-                        </>
-                    ) : (
-                        <>
-                            <Typography variant="h6">User Nearby</Typography>
-                            <Typography variant="body2" color="text.secondary">Login to see who this is!</Typography>
-                            <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
-                                Interests: {popoverContent.interests?.length || 0}
+            {/* User Popover */}
+            {selectedUser && (
+                <Paper sx={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100, p: 2, minWidth: 250, textAlign: 'center' }}>
+                    <Typography variant="h6">{selectedUser.name}</Typography>
+                    <Box sx={{ mt: 1, mb: 2 }}>
+                        {selectedUser.interests && selectedUser.interests.map((int, i) => (
+                            <Typography key={i} variant="caption" sx={{ display: 'inline-block', bgcolor: '#e0f7fa', borderRadius: 1, px: 1, mr: 0.5 }}>
+                                {int.name || int}
                             </Typography>
-                        </>
-                    )}
-                    <Button size="small" onClick={() => setPopoverContent(null)} sx={{ mt: 1 }}>Close</Button>
+                        ))}
+                    </Box>
+                    <Button variant="contained" startIcon={<ChatIcon />} size="small" onClick={handleStartChat}>
+                        Chat
+                    </Button>
+                    <Button size="small" onClick={() => setSelectedUser(null)} sx={{ mt: 1, ml: 1 }}>Close</Button>
                 </Paper>
             )}
 
-            {/* Floating 'My Location' Button */}
-            <IconButton
-                sx={{ position: 'absolute', bottom: 20, right: 20, bgcolor: 'white', '&:hover': { bgcolor: '#f5f5f5' } }}
-                onClick={() => {
-                     navigator.geolocation.getCurrentPosition((position) => {
-                        const { latitude, longitude } = position.coords;
-                        map.getView().animate({ center: fromLonLat([longitude, latitude]), zoom: 14 });
-                    });
-                }}
-            >
+            {/* Chat Overlay */}
+            {chatTarget && socketRef.current && (
+                <ChatOverlay
+                    socket={socketRef.current}
+                    user={user}
+                    targetUser={chatTarget}
+                    onClose={() => setChatTarget(null)}
+                />
+            )}
+
+            <IconButton sx={{ position: 'absolute', bottom: 20, right: 20, bgcolor: 'white' }} onClick={() => {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                    map.getView().animate({ center: fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 14 });
+                });
+            }}>
                 <MyLocationIcon color="primary" />
             </IconButton>
-
         </Box>
     );
 };
