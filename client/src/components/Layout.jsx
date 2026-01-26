@@ -23,7 +23,7 @@ const Layout = ({ children }) => {
 
     const handleLogout = () => {
         // Call API logout endpoint (to destroy session)
-        window.location.href = `${import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'}/api/logout`;
+        window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/logout`;
         // We don't need to dispatch logout because the page will reload/redirect or we could, but server redirect handles it
     };
 
@@ -33,7 +33,7 @@ const Layout = ({ children }) => {
                 <Toolbar>
                     <MapIcon style={{ marginRight: '10px' }} />
                     <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-                        Hotspot Connect
+                        KON-NECT
                     </Typography>
 
                     {isMobile ? (
