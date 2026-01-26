@@ -13,6 +13,12 @@ const MongoStore = require('connect-mongo').default;
 const User = require('./models/User');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// --- Database Connection ---
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+    console.error('FATAL: MONGO_URI environment variable is not defined.');
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -28,8 +34,7 @@ const io = socketIo(server, {
   }
 });
 
-// --- Database Connection ---
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => console.error('MongoDB Connection Error:', err));
 

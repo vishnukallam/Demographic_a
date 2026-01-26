@@ -6,7 +6,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "build": "cd client && npm install && npm run build && rm -rf ../dist && mv dist ../dist",
+    "build": "cd client && npm ci && npm run build && rm -rf ../dist && mv dist ../dist",
+    "vercel-build": "cd client && npm install && npm run build",
     "dev": "concurrently \"npm start\" \"cd client && npm run dev\""
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-session": "^1.18.2",
+    "mongodb": "^7.0.0",
     "mongoose": "^9.1.5",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
