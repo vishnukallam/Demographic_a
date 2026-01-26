@@ -24,10 +24,29 @@ process.on('uncaughtException', (err) => {
 });
 
 // --- Database Connection ---
-const mongoUri = process.env.MONGO_URI;
+let mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
     console.error('FATAL: MONGO_URI environment variable is not defined.');
-    // We do not exit here to allow debugging on dashboard, but app is broken.
+} else {
+    // Attempt to handle special characters in password if present, though standard URI usually works.
+    // This is a safety measure requested for "bad auth" debugging.
+    try {
+        if (mongoUri.includes('@') && mongoUri.includes('mongodb+srv://')) {
+            const parts = mongoUri.split('@');
+            const credentials = parts[0].split('//')[1];
+            if (credentials.includes(':')) {
+                const [user, pass] = credentials.split(':');
+                const encodedPass = encodeURIComponent(pass);
+                // Reconstruct only if password changed (encoding needed)
+                if (pass !== encodedPass) {
+                    mongoUri = `mongodb+srv://${user}:${encodedPass}@${parts[1]}`;
+                    console.log("Encoded special characters in MongoDB password.");
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing/encoding MONGO_URI:", e);
+    }
 }
 
 const app = express();
@@ -49,7 +68,6 @@ const io = socketIo(server, {
 });
 
 console.log("Attempting to connect to MongoDB Atlas...");
-// Mongoose 9.x does not support useNewUrlParser/useUnifiedTopology. Omitting to prevent crash.
 mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => {
@@ -68,12 +86,14 @@ app.use(cors({
 }));
 
 // Fix for Path-to-Regexp wildcard crash in Express 5+ / new libs
-app.options(/.*/, cors());
+// Using named wildcard '*path' is the standard Express 5 way to match everything
+app.options('*path', cors());
 
 app.use(express.json());
 app.set('trust proxy', 1); // Required for Render to handle secure cookies correctly
 
 // --- Auth Routes ---
+// Explicitly exempt from any global auth middleware (mounted at root level)
 app.use('/api/auth', authRoutes);
 
 // --- Auth Middleware (JWT) ---

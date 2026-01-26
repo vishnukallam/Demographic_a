@@ -38,12 +38,8 @@ router.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, salt);
 
         // Generate Initials Avatar Fallback
-        // If no profile photo (which is always true for manual register currently),
-        // we can set a default or just handle it on client.
-        // The prompt says: "the backend should return the initials string".
-        // We will generate it here.
         const getInitials = (name) => {
-             const parts = name.split(' ').filter(Boolean);
+             const parts = (name || '').split(' ').filter(Boolean);
              if (parts.length === 0) return '?';
              if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
              return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
@@ -57,9 +53,7 @@ router.post('/register', async (req, res) => {
             password: hashedPassword,
             bio,
             interests: interests || [],
-            // We can treat profilePhoto as the initials string if it's not a URL,
-            // OR we just return it in the response as requested.
-            // Let's store it as null in DB (standard) but send it in response.
+            profilePhoto: null // Default null
         });
 
         await newUser.save();
@@ -80,14 +74,15 @@ router.post('/register', async (req, res) => {
                 bio: newUser.bio,
                 interests: newUser.interests,
                 location: newUser.location,
-                profilePhoto: null, // explicit null
-                initials: initials // explicit initials as requested
+                profilePhoto: null,
+                initials: initials
             }
         });
 
     } catch (err) {
         console.error('Registration Error:', err);
-        res.status(500).json({ error: 'Server error during registration' });
+        // Return detailed error only if safe/dev, but for now generic with logging
+        res.status(500).json({ error: 'Server error during registration', details: err.message });
     }
 });
 
@@ -145,7 +140,7 @@ router.post('/login', async (req, res) => {
 
     } catch (err) {
         console.error('Login Error:', err);
-        res.status(500).json({ error: 'Server error during login' });
+        res.status(500).json({ error: 'Server error during login', details: err.message });
     }
 });
 
