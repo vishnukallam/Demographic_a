@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { AppBar, Toolbar, Typography, Button, IconButton, Menu, MenuItem, Box, useMediaQuery, useTheme, Avatar } from '@mui/material';
-import { Menu as MenuIcon, LogOut, Map as MapIcon, User } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { AppBar, Toolbar, Typography, Button, IconButton, Menu, MenuItem, Box, useMediaQuery, useTheme } from '@mui/material';
+import { Menu as MenuIcon, LogOut, Map as MapIcon } from 'lucide-react';
 import { useSelector, useDispatch } from 'react-redux';
 import { logout } from '../store/authSlice';
+import Avatar from './Avatar';
 
 const Layout = ({ children }) => {
     const { user } = useSelector(state => state.auth);
@@ -11,7 +11,6 @@ const Layout = ({ children }) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
     const [anchorEl, setAnchorEl] = useState(null);
-    const navigate = useNavigate();
 
     const handleMenu = (event) => {
         setAnchorEl(event.currentTarget);
@@ -22,9 +21,10 @@ const Layout = ({ children }) => {
     };
 
     const handleLogout = () => {
-        // Call API logout endpoint (to destroy session)
-        window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/logout`;
-        // We don't need to dispatch logout because the page will reload/redirect or we could, but server redirect handles it
+        dispatch(logout());
+        // Since logout clears the state and localStorage, and ProtectedRoute watches state,
+        // the user will be redirected to login automatically or we can force it if needed.
+        // But ProtectedRoute inside App.jsx should handle it.
     };
 
     return (
@@ -74,7 +74,7 @@ const Layout = ({ children }) => {
                             {user && (
                                 <>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <Avatar src={user.profilePhoto} alt={user.displayName} sx={{ width: 32, height: 32 }} />
+                                        <Avatar user={user} sx={{ width: 32, height: 32 }} />
                                         <Typography variant="subtitle1">{user.displayName}</Typography>
                                     </Box>
                                     <Button color="inherit" onClick={handleLogout} startIcon={<LogOut />}>

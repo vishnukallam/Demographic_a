@@ -4,18 +4,28 @@ const Schema = mongoose.Schema;
 const userSchema = new Schema({
     googleId: {
         type: String,
-        required: true,
-        unique: true
+        unique: true,
+        sparse: true // Allows null/undefined values to not conflict
     },
     displayName: {
         type: String,
         required: true
     },
     email: {
-        type: String
+        type: String,
+        required: true,
+        unique: true
+    },
+    password: {
+        type: String,
+        required: function() { return !this.googleId; } // Required if not a google user
     },
     profilePhoto: {
         type: String
+    },
+    bio: {
+        type: String,
+        default: ''
     },
     interests: {
         type: [String],
@@ -23,8 +33,8 @@ const userSchema = new Schema({
     },
     location: {
         type: {
-            type: String, // Don't do `{ location: { type: String } }`
-            enum: ['Point'], // 'location.type' must be 'Point'
+            type: String,
+            enum: ['Point'],
             default: 'Point'
         },
         coordinates: {

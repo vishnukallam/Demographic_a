@@ -6,12 +6,11 @@ const http = require('http');
 const socketIo = require('socket.io');
 const csv = require('csv-parser');
 const mongoose = require('mongoose');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const session = require('express-session');
-const MongoStore = require('connect-mongo').default;
+const jwt = require('jsonwebtoken');
 const User = require('./models/User');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const authRoutes = require('./routes/auth');
 
 // --- Global Error Handling to Prevent Crash on Auth Fail ---
 process.on('unhandledRejection', (reason, promise) => {
@@ -70,81 +69,25 @@ app.use(cors({
 app.use(express.json());
 app.set('trust proxy', 1); // Required for Render to handle secure cookies correctly
 
-// --- Session Setup ---
-let sessionStore;
-try {
-    sessionStore = MongoStore.create({
-        mongoUrl: mongoUri,
-        autoRemove: 'native'
-    });
-    sessionStore.on('error', (err) => {
-        console.error('Session Store Error:', err);
-    });
-} catch (err) {
-    console.error('Failed to initialize Session Store:', err);
-}
+// --- Auth Routes ---
+app.use('/api/auth', authRoutes);
 
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'dev_secret',
-    resave: false,
-    saveUninitialized: false,
-    store: sessionStore, // Might be undefined if failed, handling that?
-    // If undefined, express-session warns and uses MemoryStore, which is fine for keeping server up
-    cookie: {
-        maxAge: 24 * 60 * 60 * 1000, // 1 day
-        secure: true, // Required for SameSite=None
-        sameSite: 'none' // Required for cross-site (Vercel -> Render)
-    }
-}));
-
-// --- Passport Setup ---
-app.use(passport.initialize());
-app.use(passport.session());
-
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.CALLBACK_URL,
-    proxy: true
-}, async (accessToken, refreshToken, profile, done) => {
-    try {
-        let user = await User.findOne({ googleId: profile.id });
-        if (!user) {
-            user = await User.create({
-                googleId: profile.id,
-                displayName: profile.displayName,
-                email: profile.emails?.[0]?.value,
-                profilePhoto: profile.photos?.[0]?.value
-            });
-        } else {
-            user.lastLogin = Date.now();
-            await user.save();
-        }
-        return done(null, user);
-    } catch (err) {
-        return done(err, null);
-    }
-}));
-
-passport.serializeUser((user, done) => {
-    done(null, user.id);
-});
-
-passport.deserializeUser(async (id, done) => {
-    try {
-        const user = await User.findById(id);
-        done(null, user);
-    } catch (err) {
-        done(err, null);
-    }
-});
-
-// --- Auth Middleware ---
+// --- Auth Middleware (JWT) ---
 const requireAuth = (req, res, next) => {
-    if (req.isAuthenticated()) {
-        return next();
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+
+    if (!token) {
+        return res.status(401).json({ error: 'Authentication required' });
     }
-    res.status(401).send('Unauthorized');
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded; // Contains { id: ... }
+        req.user.id = decoded.id; // Compatibility alias
+        next();
+    } catch (err) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
 };
 
 // --- Socket.io Logic ---
@@ -268,29 +211,13 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Auth Routes
-app.get('/auth/google', passport.authenticate('google', {
-    scope: ['profile', 'email']
-}));
-
-app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: process.env.CLIENT_URL }),
-    (req, res) => {
-        // Redirect to client
-        res.redirect(process.env.CLIENT_URL);
+app.get('/api/current_user', requireAuth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch user' });
     }
-);
-
-app.get('/api/current_user', (req, res) => {
-    if (!req.user) return res.status(401).send('');
-    res.send(req.user);
-});
-
-app.get('/api/logout', (req, res) => {
-    req.logout((err) => {
-        if (err) return res.status(500).send(err);
-        res.redirect(process.env.CLIENT_URL);
-    });
 });
 
 // User Updates - Protected

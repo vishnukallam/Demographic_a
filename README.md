@@ -1,12 +1,11 @@
 # Demographic - Social Map Application (Production)
 
-A real-time location-based social app connecting users via shared interests using Google Authentication.
+A real-time location-based social app connecting users via shared interests.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18 or higher)
 - MongoDB Atlas Account
-- Google Cloud Console Project (OAuth credentials)
 
 ## Project Structure
 
@@ -41,16 +40,16 @@ Create a `.env` file in the root directory:
 # MongoDB & Server Config
 MONGO_URI=mongodb+srv://<user>:<password>@cluster0.mongodb.net/?appName=Cluster0
 PORT=10000
-SESSION_SECRET=your_secure_session_secret
+JWT_SECRET=your_super_secret_jwt_key
 
-# Google OAuth
+# URLs for CORS
+CLIENT_URL=http://localhost:5173
+VITE_API_URL=http://localhost:10000
+
+# Legacy Google OAuth (Optional/Future Use)
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 CALLBACK_URL=http://localhost:10000/auth/google/callback
-
-# URLs for CORS and Redirects
-CLIENT_URL=http://localhost:5173
-SERVER_URL=http://localhost:10000
 ```
 
 ## Running Locally
@@ -80,66 +79,44 @@ npm run dev
 3.  **Build Command:** `npm install && cd client && npm install && npm run build`
 4.  **Output Directory:** `client/dist`
 5.  **Environment Variables:**
-    - `VITE_SERVER_URL`: Your production backend URL (e.g., https://your-app.onrender.com)
+    - `VITE_API_URL`: Your production backend URL (e.g., https://your-app.onrender.com)
 
 ---
 
 ## Development Ledger
 
+### Authentication Update (Current)
+
+-   **System Pivot**: Replaced Google OAuth with Custom Email/Password Authentication using JWT.
+-   **New Features**:
+    -   Registration with Name, Email, Password, Bio.
+    -   Interest selection with Categories and Custom Interest support.
+    -   **Interest Moderation**: Automated flagging of inappropriate custom interests (Explicit, Violence, Hate, etc.).
+    -   **Avatars**: Auto-generated initials avatars for users without profile photos.
+-   **Security**:
+    -   `bcryptjs` for password hashing.
+    -   `jsonwebtoken` for stateless authentication.
+    -   Removed `express-session` and `passport`.
+-   **Legacy**:
+    -   Google Strategy code moved to `server/auth/legacy/`.
+    -   Login page includes a placeholder for future Google Login integration.
+
 ### Files Modified
 
-1.  **`server/index.js`**:
-    -   Updated CORS configuration to dynamically allow `CLIENT_URL` and localhost.
-    -   Configured `mongoose.connect` with `MONGO_URI` and added error handling (process exit on failure).
-    -   Updated Passport Google Strategy to use `CALLBACK_URL`.
-    -   Implemented `requireAuth` middleware for protected routes (`/api/interests`, `/api/user/interests`).
-    -   Ensured server listens on `0.0.0.0` and `PORT`.
-    -   Removed implicit guest handling.
-    -   **Update**: Removed legacy local MongoDB fallback. Updated `mongoose.connect` options. Added Atlas connection logging.
-
-2.  **`client/src/App.jsx`**:
-    -   Refactored to use `ProtectedRoute`.
-    -   Implemented strict redirect: Unauthenticated users are redirected to `/login`.
-    -   Added `/login` route.
-
-3.  **`client/src/components/Chat.jsx`**:
-    -   **Deleted**: Legacy guest mode chat component replaced by `ChatOverlay.jsx` usage in `Map.jsx`.
-
-4.  **`client/src/store/authSlice.js`**:
-    -   Verified removal of guest logic.
-
-5.  **`package.json`**:
-    -   Updated `build` script to handle client/server dependency installation and build for Vercel monorepo structure.
-
-6.  **`vercel.json`**:
-    -   Updated `outputDirectory` to `client/dist`.
-    -   Configured rewrites for SPA routing.
-
-### Transition Fixes
-
--   **Guest Mode Removal**: Completely stripped the "Guest" access path. The application now strictly enforces Google OAuth.
--   **Authentication Enforcement**: Added server-side middleware to reject unauthenticated API requests with 401. Added client-side routing guards to redirect to login.
--   **MongoDB Connectivity**: Switched to environment-variable based connection with strict error handling to ensure production readiness.
--   **Deployment Compatibility**:
-    -   **Render**: Fixed port binding (0.0.0.0) and dynamic callback URLs.
-    -   **Vercel**: Configured build scripts and output directories to support the `client/` subdirectory structure within the root repo.
--   **Urgent Auth Fix**:
-    -   Removed `server/.env.example`.
-    -   Hardcoded production credentials in root `.env` (excluding sensitive data from repo history, present in local env).
-    -   Removed legacy local MongoDB connection string support.
-    -   Verified removal of deprecated Mongoose options while maintaining connection to Atlas Cluster0.
+1.  **`server/models/User.js`**: Added password, bio; removed strict googleId requirement.
+2.  **`server/routes/auth.js`**: New custom auth endpoints (`/register`, `/login`).
+3.  **`server/utils/moderation.js`**: Content moderation logic.
+4.  **`client/src/components/Register.jsx`**: New registration UI.
+5.  **`client/src/components/Login.jsx`**: Updated for email/password.
+6.  **`client/src/store/authSlice.js`**: Refactored for JWT auth.
 
 ### Environment Variables Checklist
 
 #### Render (Backend)
 -   `MONGO_URI`: Connection string for MongoDB Atlas.
--   `PORT`: `10000` (or as assigned).
--   `SESSION_SECRET`: Secret for session signing.
--   `GOOGLE_CLIENT_ID`: OAuth Client ID.
--   `GOOGLE_CLIENT_SECRET`: OAuth Client Secret.
--   `CALLBACK_URL`: `https://<your-render-url>/auth/google/callback`
--   `CLIENT_URL`: `https://<your-vercel-url>`
--   `SERVER_URL`: `https://<your-render-url>`
+-   `PORT`: `10000`.
+-   `JWT_SECRET`: Secure key for token signing.
+-   `CLIENT_URL`: URL of the frontend (for CORS).
 
 #### Vercel (Frontend)
--   `VITE_SERVER_URL`: `https://<your-render-url>`
+-   `VITE_API_URL`: URL of the backend.
