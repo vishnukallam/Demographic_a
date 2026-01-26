@@ -68,6 +68,7 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
+app.set('trust proxy', 1); // Required for Render to handle secure cookies correctly
 
 // --- Session Setup ---
 let sessionStore;
@@ -90,7 +91,9 @@ app.use(session({
     store: sessionStore, // Might be undefined if failed, handling that?
     // If undefined, express-session warns and uses MemoryStore, which is fine for keeping server up
     cookie: {
-        maxAge: 24 * 60 * 60 * 1000 // 1 day
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
+        secure: true, // Required for SameSite=None
+        sameSite: 'none' // Required for cross-site (Vercel -> Render)
     }
 }));
 
