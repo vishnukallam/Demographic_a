@@ -37,13 +37,29 @@ router.post('/register', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+        // Generate Initials Avatar Fallback
+        // If no profile photo (which is always true for manual register currently),
+        // we can set a default or just handle it on client.
+        // The prompt says: "the backend should return the initials string".
+        // We will generate it here.
+        const getInitials = (name) => {
+             const parts = name.split(' ').filter(Boolean);
+             if (parts.length === 0) return '?';
+             if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        };
+        const initials = getInitials(displayName);
+
         // Create User
         const newUser = new User({
             displayName,
             email,
             password: hashedPassword,
             bio,
-            interests: interests || []
+            interests: interests || [],
+            // We can treat profilePhoto as the initials string if it's not a URL,
+            // OR we just return it in the response as requested.
+            // Let's store it as null in DB (standard) but send it in response.
         });
 
         await newUser.save();
@@ -63,7 +79,9 @@ router.post('/register', async (req, res) => {
                 email: newUser.email,
                 bio: newUser.bio,
                 interests: newUser.interests,
-                location: newUser.location
+                location: newUser.location,
+                profilePhoto: null, // explicit null
+                initials: initials // explicit initials as requested
             }
         });
 
@@ -103,6 +121,14 @@ router.post('/login', async (req, res) => {
             { expiresIn: '7d' }
         );
 
+        // Calculate initials for login response too
+        const getInitials = (name) => {
+             const parts = (name || '').split(' ').filter(Boolean);
+             if (parts.length === 0) return '?';
+             if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        };
+
         res.json({
             token,
             user: {
@@ -112,7 +138,8 @@ router.post('/login', async (req, res) => {
                 bio: user.bio,
                 interests: user.interests,
                 location: user.location,
-                profilePhoto: user.profilePhoto
+                profilePhoto: user.profilePhoto,
+                initials: getInitials(user.displayName)
             }
         });
 

@@ -36,13 +36,13 @@ const io = socketIo(server, {
   cors: {
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000'];
+        const allowedOrigins = [process.env.CLIENT_URL, 'https://demographic-alpha.vercel.app', 'http://localhost:5173', 'http://localhost:3000'];
         if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost')) {
             return callback(null, true);
         }
         return callback(new Error('Not allowed by CORS'));
     },
-    methods: ["GET", "POST", "PUT"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true
   }
 });
@@ -54,18 +54,17 @@ mongoose.connect(mongoUri)
         console.error('MongoDB Connection Error:', err);
     });
 
+console.log("CORS allowed for: " + (process.env.CLIENT_URL || "https://demographic-alpha.vercel.app"));
+
 // --- Middleware ---
 app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin) return callback(null, true);
-        const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173', 'http://localhost:3000'];
-        if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost')) {
-            return callback(null, true);
-        }
-        return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true
+    origin: process.env.CLIENT_URL || "https://demographic-alpha.vercel.app",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
 }));
+app.options('*', cors()); // Enable pre-flight across-the-board
+
 app.use(express.json());
 app.set('trust proxy', 1); // Required for Render to handle secure cookies correctly
 
