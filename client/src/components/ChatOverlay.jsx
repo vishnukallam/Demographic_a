@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, Paper, Typography, TextField, Button, IconButton, Divider, List, ListItem, ListItemText } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import SendIcon from '@mui/icons-material/Send';
+import { X, Send } from 'lucide-react';
 
 const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
     const [messages, setMessages] = useState([]);
@@ -15,9 +14,10 @@ const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
         // Initiate Chat (if starting fresh) OR set ID (if accepting)
         if (targetUser.roomId) {
             setRoomId(targetUser.roomId);
-            // Already joined via accept_chat in Map.jsx, or assume connection is good.
+            // socket.emit('accept_chat', { roomId: targetUser.roomId }); // Already done in Map.jsx?
         } else {
-            socket.emit('join_chat', targetUser.socketId);
+            // targetUser is a MongoDB user object, likely has _id
+            socket.emit('join_chat', { targetUserId: targetUser._id });
         }
 
         // Listeners
@@ -47,10 +47,8 @@ const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
             socket.emit('send_message', {
                 roomId,
                 message: input,
-                toName: targetUser.name
+                toName: targetUser.displayName
             });
-            // Optimistically add own message? No, wait for echo to keep sync simple or add strictly local
-            // Server currently broadcasts to room, so we will receive our own message back if we are in the room.
             setInput('');
         }
     };
@@ -69,9 +67,9 @@ const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
         }}>
             {/* Header */}
             <Box sx={{ p: 2, bgcolor: '#1976d2', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle1">{targetUser.name}</Typography>
+                <Typography variant="subtitle1">{targetUser.displayName || targetUser.name}</Typography>
                 <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
-                    <CloseIcon />
+                    <X size={18} />
                 </IconButton>
             </Box>
 
@@ -83,7 +81,7 @@ const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
                     </Typography>
                 )}
                 {messages.map((msg, idx) => {
-                    const isMe = msg.senderId === socket.id;
+                    const isMe = msg.senderId === user._id; // Compare with MongoDB User ID
                     return (
                         <Box key={idx} sx={{
                             display: 'flex',
@@ -116,7 +114,7 @@ const ChatOverlay = ({ socket, user, targetUser, onClose }) => {
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
                 />
                 <IconButton color="primary" onClick={handleSend} disabled={!roomId}>
-                    <SendIcon />
+                    <Send size={20} />
                 </IconButton>
             </Box>
         </Paper>

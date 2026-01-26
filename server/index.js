@@ -5,23 +5,47 @@ const path = require('path');
 const http = require('http');
 const socketIo = require('socket.io');
 const csv = require('csv-parser');
+const mongoose = require('mongoose');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session = require('express-session');
+const MongoStore = require('connect-mongo').default;
+const User = require('./models/User');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+// --- Database Connection ---
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+    console.error('FATAL: MONGO_URI environment variable is not defined.');
+    // In production, we must exit. In dev, we might survive if just testing UI, but for this app DB is critical.
+    if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+    }
+}
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST", "PUT"]
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (origin.startsWith('http://localhost')) return callback(null, true);
+        if (origin === process.env.CLIENT_URL) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+    },
+    methods: ["GET", "POST", "PUT"],
+    credentials: true
   }
 });
 
-// Middleware
+mongoose.connect(mongoUri)
+    .then(() => console.log('MongoDB Connected'))
+    .catch(err => console.error('MongoDB Connection Error:', err));
+
+// --- Middleware ---
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        // Allow any localhost origin
         if (origin.startsWith('http://localhost')) return callback(null, true);
         if (origin === process.env.CLIENT_URL) return callback(null, true);
         return callback(new Error('Not allowed by CORS'));
@@ -30,125 +54,217 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// In-Memory User Store
-// Map<socketId, { socketId, name, interests: [], location: {lat, lng} }>
-const users = new Map();
-
-// Calculate distance between two points in km
-function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad(lat2-lat1);  // deg2rad below
-  var dLon = deg2rad(lon2-lon1);
-  var a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-    Math.sin(dLon/2) * Math.sin(dLon/2)
-    ;
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  var d = R * c; // Distance in km
-  return d;
-}
-
-function deg2rad(deg) {
-  return deg * (Math.PI/180)
-}
-
-io.on('connection', (socket) => {
-  console.log('New client connected', socket.id);
-
-  // Register User
-  socket.on('register_user', (userData) => {
-    // userData: { name, interests: [], location: {lat, lng} }
-    users.set(socket.id, { ...userData, socketId: socket.id });
-    console.log(`User registered: ${userData.name} (${socket.id})`);
-
-    // Broadcast updated user list to relevant users (naive: broadcast to all for now, optimized later)
-    broadcastNearbyUsers();
-  });
-
-  // Update Location
-  socket.on('update_location', (location) => {
-    const user = users.get(socket.id);
-    if (user) {
-      user.location = location;
-      users.set(socket.id, user);
-      broadcastNearbyUsers();
+// --- Session Setup ---
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'dev_secret',
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({ mongoUrl: mongoUri }),
+    cookie: {
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
     }
-  });
+}));
 
-  // Chat Join
-  socket.on('join_chat', (targetSocketId) => {
-      // Logic for joining a private room
-      const roomId = [socket.id, targetSocketId].sort().join('_');
-      socket.join(roomId);
-      const sender = users.get(socket.id);
-      const senderName = sender ? sender.name : 'Someone';
+// --- Passport Setup ---
+app.use(passport.initialize());
+app.use(passport.session());
 
-      // Notify target user to join
-      io.to(targetSocketId).emit('chat_request', {
-          from: socket.id,
-          fromName: senderName,
-          roomId
-      });
-      socket.emit('chat_joined', { roomId });
-  });
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: (process.env.SERVER_URL || '') + '/auth/google/callback',
+    proxy: true
+}, async (accessToken, refreshToken, profile, done) => {
+    try {
+        let user = await User.findOne({ googleId: profile.id });
+        if (!user) {
+            user = await User.create({
+                googleId: profile.id,
+                displayName: profile.displayName,
+                email: profile.emails?.[0]?.value,
+                profilePhoto: profile.photos?.[0]?.value
+            });
+        } else {
+            user.lastLogin = Date.now();
+            await user.save();
+        }
+        return done(null, user);
+    } catch (err) {
+        return done(err, null);
+    }
+}));
 
-  socket.on('accept_chat', ({ roomId }) => {
-      socket.join(roomId);
-  });
-
-  socket.on('send_message', ({ roomId, message, toName }) => {
-      io.to(roomId).emit('receive_message', {
-          text: message,
-          senderId: socket.id,
-          senderName: users.get(socket.id)?.name || 'Anonymous',
-          timestamp: new Date()
-      });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected', socket.id);
-    users.delete(socket.id);
-    broadcastNearbyUsers();
-  });
+passport.serializeUser((user, done) => {
+    done(null, user.id);
 });
 
-function broadcastNearbyUsers() {
-    // For each user, find nearby users with shared interests
-    users.forEach((currentUser, socketId) => {
-        const nearby = [];
-        users.forEach((otherUser, otherSocketId) => {
-            if (socketId === otherSocketId) return; // Skip self
+passport.deserializeUser(async (id, done) => {
+    try {
+        const user = await User.findById(id);
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
+});
 
-            if (currentUser.location && otherUser.location) {
-                const dist = getDistanceFromLatLonInKm(
-                    currentUser.location.lat, currentUser.location.lng,
-                    otherUser.location.lat, otherUser.location.lng
-                );
+// --- Socket.io Logic ---
+// Map<socketId, userId> to track active connections
+const socketToUser = new Map();
 
-                if (dist <= 10) { // 10km radius
-                    // Check shared interests
-                    const sharedInterests = currentUser.interests.filter(i =>
-                        otherUser.interests.some(oi => oi.name === i.name)
-                    );
+io.on('connection', (socket) => {
+    console.log('New client connected', socket.id);
 
-                    if (sharedInterests.length > 0) {
-                        nearby.push({
-                            socketId: otherUser.socketId,
-                            name: otherUser.name,
-                            interests: otherUser.interests, // Or just shared ones
-                            location: otherUser.location,
-                            distance: dist
-                        });
-                    }
-                }
-            }
-        });
-        io.to(socketId).emit('nearby_users', nearby);
+    socket.on('register_user', async (userId) => {
+        if (!userId) return;
+        socketToUser.set(socket.id, userId);
+        socket.join(userId); // Join a room named after the userId for private messaging
+        console.log(`Socket ${socket.id} mapped to User ${userId}`);
+
+        // Trigger an initial broadcast for this user
+        broadcastNearbyUsers(socket, userId);
     });
+
+    socket.on('update_location', async (data) => {
+        // data: { lat, lng }
+        const userId = socketToUser.get(socket.id);
+        if (!userId || !data) return;
+
+        try {
+            // Update DB
+            await User.findByIdAndUpdate(userId, {
+                location: {
+                    type: 'Point',
+                    coordinates: [data.lng, data.lat]
+                }
+            });
+            // Broadcast new nearby users
+            broadcastNearbyUsers(socket, userId);
+        } catch (err) {
+            console.error('Error updating location:', err);
+        }
+    });
+
+    socket.on('join_chat', async ({ targetUserId }) => {
+       const currentUserId = socketToUser.get(socket.id);
+       if (!currentUserId) return;
+
+       try {
+           const currentUser = await User.findById(currentUserId);
+           const fromName = currentUser ? currentUser.displayName : 'User';
+
+           const roomId = [currentUserId, targetUserId].sort().join('_');
+           socket.join(roomId);
+
+           // Find the target user's socket(s)
+           io.to(targetUserId).emit('chat_request', {
+               from: currentUserId,
+               fromName,
+               roomId
+           });
+           socket.emit('chat_joined', { roomId });
+       } catch (err) {
+           console.error('Error joining chat:', err);
+       }
+    });
+
+    socket.on('accept_chat', ({ roomId }) => {
+        socket.join(roomId);
+    });
+
+    socket.on('send_message', ({ roomId, message }) => {
+        const userId = socketToUser.get(socket.id);
+        io.to(roomId).emit('receive_message', {
+            text: message,
+            senderId: userId,
+            timestamp: new Date()
+        });
+    });
+
+    socket.on('disconnect', () => {
+        socketToUser.delete(socket.id);
+        console.log('Client disconnected', socket.id);
+    });
+});
+
+async function broadcastNearbyUsers(socket, userId) {
+    try {
+        const currentUser = await User.findById(userId);
+        if (!currentUser || !currentUser.location || !currentUser.location.coordinates) return;
+
+        const [lng, lat] = currentUser.location.coordinates;
+
+        // Find users within 10km
+        const nearbyUsers = await User.find({
+            location: {
+                $near: {
+                    $geometry: {
+                        type: 'Point',
+                        coordinates: [lng, lat]
+                    },
+                    $maxDistance: 10000 // 10km
+                }
+            },
+            _id: { $ne: userId } // Exclude self
+        }).select('displayName interests location profilePhoto'); // Select specific fields
+
+        // Filter by shared interests (Javascript logic for now, or could use aggregation)
+        // If user has no interests, they see no one? Or everyone?
+        // Prompt implies: "Ensure the 'Nearby Users' logic has data to work with immediately."
+        // We will filter if both parties have interests.
+
+        const relevantUsers = nearbyUsers.filter(otherUser => {
+            const sharedInterests = currentUser.interests.filter(i =>
+                otherUser.interests.some(oi => oi === i || oi.name === i) // Handle string or object structure if needed
+            );
+            return sharedInterests.length > 0;
+        });
+
+        socket.emit('nearby_users', relevantUsers);
+    } catch (err) {
+        console.error('Error broadcasting nearby users:', err);
+    }
 }
 
-// Load Interests
+
+// --- Routes ---
+
+// Auth Routes
+app.get('/auth/google', passport.authenticate('google', {
+    scope: ['profile', 'email']
+}));
+
+app.get('/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: process.env.CLIENT_URL }),
+    (req, res) => {
+        // Redirect to client
+        res.redirect(process.env.CLIENT_URL);
+    }
+);
+
+app.get('/api/current_user', (req, res) => {
+    res.send(req.user);
+});
+
+app.get('/api/logout', (req, res) => {
+    req.logout((err) => {
+        if (err) return res.status(500).send(err);
+        res.redirect(process.env.CLIENT_URL);
+    });
+});
+
+// User Updates
+app.post('/api/user/interests', async (req, res) => {
+    if (!req.user) return res.status(401).send('Unauthorized');
+    try {
+        const { interests } = req.body; // Expecting array of strings
+        await User.findByIdAndUpdate(req.user.id, { interests });
+        res.send(await User.findById(req.user.id));
+    } catch (err) {
+        res.status(500).send(err);
+    }
+});
+
+// Load Interests CSV
 const interests = [];
 fs.createReadStream(path.join(__dirname, 'Interests.csv'))
   .pipe(csv())
@@ -163,11 +279,8 @@ fs.createReadStream(path.join(__dirname, 'Interests.csv'))
     console.log('Interests loaded');
   });
 
-app.set('interests', interests);
-
-// Get Interests Endpoint
 app.get('/api/interests', (req, res) => {
-  res.json(interests);
+    res.json(interests);
 });
 
 const PORT = process.env.PORT || 3000;

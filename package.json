@@ -6,15 +6,22 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "build": "cd client && npm install && npm run build && rm -rf ../dist && mv dist ../dist",
+    "build": "cd client && npm install && npm run build && cd .. && rm -rf dist && mv client/dist dist",
+    "vercel-build": "npm run build",
     "dev": "concurrently \"npm start\" \"cd client && npm run dev\""
   },
   "dependencies": {
     "concurrently": "^8.2.0",
+    "connect-mongo": "^6.0.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "express-session": "^1.18.2",
+    "mongodb": "^7.0.0",
+    "mongoose": "^9.1.5",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "socket.io": "^4.8.3"
   },
   "engines": {

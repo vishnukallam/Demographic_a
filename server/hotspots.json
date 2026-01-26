@@ -1,20 +1,26 @@
 [
   {
-    "name": "Midtown Manhattan",
-    "latitude": 40.7580,
-    "longitude": -73.9855,
+    "name": "Visakhapatnam",
+    "latitude": 17.6868,
+    "longitude": 83.2185,
     "radius": 10000
   },
   {
-    "name": "Downtown Brooklyn",
-    "latitude": 40.6960,
-    "longitude": -73.9840,
+    "name": "Vijayawada",
+    "latitude": 16.5062,
+    "longitude": 80.6480,
     "radius": 10000
   },
   {
-    "name": "Harlem",
-    "latitude": 40.8115,
-    "longitude": -73.9465,
+    "name": "Tirupati",
+    "latitude": 13.6288,
+    "longitude": 79.4192,
+    "radius": 10000
+  },
+  {
+    "name": "Amaravati",
+    "latitude": 16.5417,
+    "longitude": 80.5158,
     "radius": 10000
   }
 ]
