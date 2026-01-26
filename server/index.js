@@ -36,7 +36,8 @@ const io = socketIo(server, {
   cors: {
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        const allowedOrigins = [process.env.CLIENT_URL, 'https://demographic-alpha.vercel.app', 'http://localhost:5173', 'http://localhost:3000'];
+        const clientUrl = (process.env.CLIENT_URL || "https://demographic-alpha.vercel.app").replace(/\/$/, "");
+        const allowedOrigins = [clientUrl, 'https://demographic-alpha.vercel.app', 'http://localhost:5173', 'http://localhost:3000'];
         if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost')) {
             return callback(null, true);
         }
@@ -48,22 +49,26 @@ const io = socketIo(server, {
 });
 
 console.log("Attempting to connect to MongoDB Atlas...");
+// Mongoose 9.x does not support useNewUrlParser/useUnifiedTopology. Omitting to prevent crash.
 mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => {
         console.error('MongoDB Connection Error:', err);
     });
 
-console.log("CORS allowed for: " + (process.env.CLIENT_URL || "https://demographic-alpha.vercel.app"));
+const allowedOrigin = (process.env.CLIENT_URL || "https://demographic-alpha.vercel.app").replace(/\/$/, "");
+console.log("CORS allowed for: " + allowedOrigin);
 
 // --- Middleware ---
 app.use(cors({
-    origin: process.env.CLIENT_URL || "https://demographic-alpha.vercel.app",
+    origin: allowedOrigin,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
-app.options('*', cors()); // Enable pre-flight across-the-board
+
+// Fix for Path-to-Regexp wildcard crash in Express 5+ / new libs
+app.options(/.*/, cors());
 
 app.use(express.json());
 app.set('trust proxy', 1); // Required for Render to handle secure cookies correctly
