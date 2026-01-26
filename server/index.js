@@ -37,6 +37,7 @@ const io = socketIo(server, {
   }
 });
 
+console.log("Attempting to connect to MongoDB Atlas...");
 mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => {

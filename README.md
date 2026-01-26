@@ -95,6 +95,7 @@ npm run dev
     -   Implemented `requireAuth` middleware for protected routes (`/api/interests`, `/api/user/interests`).
     -   Ensured server listens on `0.0.0.0` and `PORT`.
     -   Removed implicit guest handling.
+    -   **Update**: Removed legacy local MongoDB fallback. Updated `mongoose.connect` options. Added Atlas connection logging.
 
 2.  **`client/src/App.jsx`**:
     -   Refactored to use `ProtectedRoute`.
@@ -122,6 +123,11 @@ npm run dev
 -   **Deployment Compatibility**:
     -   **Render**: Fixed port binding (0.0.0.0) and dynamic callback URLs.
     -   **Vercel**: Configured build scripts and output directories to support the `client/` subdirectory structure within the root repo.
+-   **Urgent Auth Fix**:
+    -   Removed `server/.env.example`.
+    -   Hardcoded production credentials in root `.env` (excluding sensitive data from repo history, present in local env).
+    -   Removed legacy local MongoDB connection string support.
+    -   Verified removal of deprecated Mongoose options while maintaining connection to Atlas Cluster0.
 
 ### Environment Variables Checklist
 
