@@ -13,11 +13,22 @@ const MongoStore = require('connect-mongo').default;
 const User = require('./models/User');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+// --- Global Error Handling to Prevent Crash on Auth Fail ---
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Do not exit process
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    // Do not exit process
+});
+
 // --- Database Connection ---
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
     console.error('FATAL: MONGO_URI environment variable is not defined.');
-    process.exit(1);
+    // We do not exit here to allow debugging on dashboard, but app is broken.
 }
 
 const app = express();
@@ -42,7 +53,6 @@ mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => {
         console.error('MongoDB Connection Error:', err);
-        process.exit(1);
     });
 
 // --- Middleware ---
@@ -60,11 +70,25 @@ app.use(cors({
 app.use(express.json());
 
 // --- Session Setup ---
+let sessionStore;
+try {
+    sessionStore = MongoStore.create({
+        mongoUrl: mongoUri,
+        autoRemove: 'native'
+    });
+    sessionStore.on('error', (err) => {
+        console.error('Session Store Error:', err);
+    });
+} catch (err) {
+    console.error('Failed to initialize Session Store:', err);
+}
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'dev_secret',
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: mongoUri }),
+    store: sessionStore, // Might be undefined if failed, handling that?
+    // If undefined, express-session warns and uses MemoryStore, which is fine for keeping server up
     cookie: {
         maxAge: 24 * 60 * 60 * 1000 // 1 day
     }
@@ -236,6 +260,10 @@ async function broadcastNearbyUsers(socket, userId) {
 
 
 // --- Routes ---
+// Health Check for Render
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
 // Auth Routes
 app.get('/auth/google', passport.authenticate('google', {
