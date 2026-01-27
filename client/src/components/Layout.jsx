@@ -50,34 +50,51 @@ const Layout = ({ children }) => {
                     {/* Desktop Nav */}
                     {!isMobile && user && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {navItems.map((item) => {
-                                const isActive = location.pathname === item.path;
-                                return (
-                                    <Button
-                                        key={item.label}
-                                        startIcon={item.icon}
-                                        onClick={() => navigate(item.path)}
-                                        sx={{
-                                            color: isActive ? '#38bdf8' : 'rgba(255,255,255,0.7)',
-                                            fontWeight: isActive ? 600 : 400,
-                                            position: 'relative',
-                                            '&:hover': { bgcolor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' },
-                                            '&::after': isActive ? {
-                                                content: '""',
-                                                position: 'absolute',
-                                                bottom: 0,
-                                                left: '20%',
-                                                width: '60%',
-                                                height: '2px',
-                                                bgcolor: '#38bdf8',
-                                                borderRadius: '2px'
-                                            } : {}
-                                        }}
-                                    >
-                                        {item.label}
-                                    </Button>
-                                );
-                            })}
+                            <Button
+                                startIcon={<MapIcon size={20} />}
+                                onClick={() => navigate('/')}
+                                sx={{
+                                    color: location.pathname === '/' ? '#38bdf8' : 'rgba(255,255,255,0.7)',
+                                    fontWeight: location.pathname === '/' ? 600 : 400,
+                                    position: 'relative',
+                                    '&:hover': { bgcolor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' },
+                                    '&::after': location.pathname === '/' ? {
+                                        content: '""',
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        left: '20%',
+                                        width: '60%',
+                                        height: '2px',
+                                        bgcolor: '#38bdf8',
+                                        borderRadius: '2px'
+                                    } : {}
+                                }}
+                            >
+                                Map
+                            </Button>
+                            <Button
+                                startIcon={<MessageSquare size={20} />}
+                                onClick={() => navigate('/chat')}
+                                sx={{
+                                    color: location.pathname === '/chat' ? '#38bdf8' : 'rgba(255,255,255,0.7)',
+                                    fontWeight: location.pathname === '/chat' ? 600 : 400,
+                                    position: 'relative',
+                                    '&:hover': { bgcolor: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8' },
+                                    '&::after': location.pathname === '/chat' ? {
+                                        content: '""',
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        left: '20%',
+                                        width: '60%',
+                                        height: '2px',
+                                        bgcolor: '#38bdf8',
+                                        borderRadius: '2px'
+                                    } : {}
+                                }}
+                            >
+                                Chat
+                            </Button>
+
                             <Box sx={{ width: 1, height: 24, bgcolor: 'rgba(255,255,255,0.1)', mx: 2 }} />
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mr: 2, cursor: 'pointer', p: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' } }} onClick={() => navigate('/profile')}>
                                 <Avatar user={user} sx={{ width: 32, height: 32, border: '2px solid rgba(56, 189, 248, 0.5)' }} />

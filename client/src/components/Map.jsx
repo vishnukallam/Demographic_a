@@ -99,10 +99,7 @@ const MapComponent = () => {
                         offsetY: -20,
                         font: 'bold 13px Inter, sans-serif',
                         fill: new Fill({ color: '#fff' }),
-                        stroke: new Stroke({ color: '#0f172a', width: 3 }),
-                        backgroundFill: new Fill({ color: 'rgba(15, 23, 42, 0.7)' }),
-                        padding: [4, 8, 4, 8],
-                        backgroundStroke: new Stroke({ color: color, width: 1 })
+                        stroke: new Stroke({ color: '#0f172a', width: 3 })
                     })
                 }));
                 userSource.addFeature(feature);
@@ -140,22 +137,50 @@ const MapComponent = () => {
 
         setMap(initialMap);
 
-        initialMap.on('click', (e) => {
-            const feature = initialMap.forEachFeatureAtPixel(e.pixel, (f) => f);
+        // Implicit Location Update
+        if (navigator.geolocation && user) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const { latitude, longitude } = pos.coords;
+                if (socketRef.current && socketRef.current.connected) {
+                    socketRef.current.emit('update_location', { lat: latitude, lng: longitude });
+                }
+                // Center map on load
+                initialMap.getView().animate({ center: fromLonLat([longitude, latitude]), zoom: 11 });
+                fetchNearbyUsers(latitude, longitude);
+            }, (err) => console.error("Location access denied or failed", err));
+        }
+
+        /** REMOVE CLICK HANDLER AND MOVEEND HERE TO AVOID DUPLICATES IF RE-RENDERING **/
+        /** MOVED OUTSIDE FOR CLARITY OR KEPT IF DEPENDENCIES CORRECT **/
+    }, []); // Run once on mount
+
+    // Map Event Listeners (ensure map exists)
+    useEffect(() => {
+        if (!map) return;
+
+        const clickHandler = (e) => {
+            const feature = map.forEachFeatureAtPixel(e.pixel, (f) => f);
             if (feature && feature.get('type') === 'user') {
                 setSelectedUser(feature.get('data'));
             } else {
                 setSelectedUser(null);
             }
-        });
+        };
 
-        initialMap.on('moveend', () => {
-            const center = toLonLat(initialMap.getView().getCenter());
+        const moveHandler = () => {
+            const center = toLonLat(map.getView().getCenter());
+            // Debounce handled by user action or specific triggers usually, but here we update list on drag end
             fetchNearbyUsers(center[1], center[0]);
-        });
+        };
 
-        return () => initialMap.setTarget(null);
-    }, []);
+        map.on('click', clickHandler);
+        map.on('moveend', moveHandler);
+
+        return () => {
+            map.un('click', clickHandler);
+            map.un('moveend', moveHandler);
+        };
+    }, [map, fetchNearbyUsers]);
 
     // Handle User Location Updates & Radius Circle
     useEffect(() => {

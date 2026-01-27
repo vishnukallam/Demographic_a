@@ -52,12 +52,12 @@ const App = () => {
                                     <Route path="/" element={<MapComponent />} />
                                     <Route path="/profile" element={<Profile />} />
                                     <Route path="/chat" element={<Chat />} />
+                                    <Route path="*" element={<Navigate to="/" />} />
                                 </Routes>
                             </Layout>
                         </ProtectedRoute>
                     }
                 />
-                <Route path="*" element={<Navigate to="/" />} />
             </Routes>
         </BrowserRouter>
     );
