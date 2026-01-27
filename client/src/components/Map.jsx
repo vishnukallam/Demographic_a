@@ -7,8 +7,8 @@ import OSM from 'ol/source/OSM';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Feature } from 'ol';
-import { Point } from 'ol/geom';
-import { Style, Circle, Fill, Stroke, Text } from 'ol/style';
+import { Point, Circle } from 'ol/geom';
+import { Style, Circle as CircleStyle, Fill, Stroke, Text } from 'ol/style';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Typography, Button, Avatar, Slider } from '@mui/material';
 import { Search, Crosshair, MessageSquare } from 'lucide-react';
@@ -76,7 +76,7 @@ const MapComponent = () => {
                 const color = isMatch ? '#4caf50' : '#ff9800'; // Green for match, Yellow for others
 
                 feature.setStyle(new Style({
-                    image: new Circle({
+                    image: new CircleStyle({
                         radius: 8,
                         fill: new Fill({ color: color }),
                         stroke: new Stroke({ color: 'white', width: 2 })
@@ -157,7 +157,7 @@ const MapComponent = () => {
             geometry: new Point(userCoord)
         });
         selfFeature.setStyle(new Style({
-            image: new Circle({
+            image: new CircleStyle({
                 radius: 10,
                 fill: new Fill({ color: '#2196f3' }), // Blue
                 stroke: new Stroke({ color: 'white', width: 3 })
