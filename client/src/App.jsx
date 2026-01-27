@@ -8,6 +8,8 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Landing from './components/Landing';
 import InterestModal from './components/InterestModal';
+import Profile from './components/Profile';
+import Chat from './components/Chat';
 import { Box, CircularProgress } from '@mui/material';
 
 const ProtectedRoute = ({ children }) => {
@@ -46,7 +48,11 @@ const App = () => {
                         <ProtectedRoute>
                             <Layout>
                                 <InterestModal />
-                                <MapComponent />
+                                <Routes>
+                                    <Route path="/" element={<MapComponent />} />
+                                    <Route path="/profile" element={<Profile />} />
+                                    <Route path="/chat" element={<Chat />} />
+                                </Routes>
                             </Layout>
                         </ProtectedRoute>
                     }

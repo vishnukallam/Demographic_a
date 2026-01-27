@@ -36,6 +36,16 @@ const MapComponent = () => {
     // Chat State
     const [chatTarget, setChatTarget] = useState(null);
 
+    // Helper to check interest match
+    const checkInterestMatch = (userInterests, myInterests) => {
+        if (!userInterests || !myInterests) return false;
+        const set1 = new Set(myInterests.map(i => typeof i === 'string' ? i : i.name));
+        return userInterests.some(i => set1.has(typeof i === 'string' ? i : i.name));
+    };
+
+    // My Location & Radius Source
+    const [selfSource] = useState(new VectorSource());
+
     // Fetch Users based on dynamic radius
     const fetchNearbyUsers = useCallback(async (centerLat, centerLng) => {
         if (!centerLat || !centerLng) return;
@@ -45,11 +55,12 @@ const MapComponent = () => {
                     lat: centerLat,
                     lng: centerLng,
                     radius: radius,
-                    interests: 'all' // or pass user.interests
+                    interests: 'all'
                 }
             });
             const users = res.data;
             userSource.clear();
+
             users.forEach(u => {
                 if (!u.location || !u.location.coordinates) return;
                 const [lng, lat] = u.location.coordinates;
@@ -60,15 +71,18 @@ const MapComponent = () => {
                     data: u
                 });
 
-                // Style for User Pin
+                // Style Logic
+                const isMatch = user && checkInterestMatch(u.interests, user.interests);
+                const color = isMatch ? '#4caf50' : '#ff9800'; // Green for match, Yellow for others
+
                 feature.setStyle(new Style({
                     image: new Circle({
                         radius: 8,
-                        fill: new Fill({ color: '#1976d2' }),
+                        fill: new Fill({ color: color }),
                         stroke: new Stroke({ color: 'white', width: 2 })
                     }),
                     text: new Text({
-                        text: u.displayName,
+                        text: u.displayName, // Only show name on hover/click? Or always? Keeping always for now
                         offsetY: -15,
                         font: '12px Roboto, sans-serif',
                         fill: new Fill({ color: '#333' }),
@@ -82,9 +96,9 @@ const MapComponent = () => {
         } catch (err) {
             console.error("Failed to fetch nearby users:", err);
         }
-    }, [radius, userSource]);
+    }, [radius, userSource, user]);
 
-    // Initial Map Setup
+    // Initial Map Setup (Run ONCE)
     useEffect(() => {
         // Default Center (Vijayawada/AP)
         const initialCenter = fromLonLat([80.6480, 16.5062]);
@@ -93,7 +107,8 @@ const MapComponent = () => {
             target: mapRef.current,
             layers: [
                 new TileLayer({ source: new OSM() }),
-                new VectorLayer({ source: userSource, zIndex: 10 })
+                new VectorLayer({ source: userSource, zIndex: 10 }),
+                new VectorLayer({ source: selfSource, zIndex: 5 }) // Radius/Self layer
             ],
             view: new View({
                 center: initialCenter,
@@ -114,22 +129,88 @@ const MapComponent = () => {
         });
 
         // Listen for map move end to re-fetch users? 
-        // Or just fetch based on current user location?
-        // Let's fetch based on map center for exploration
         initialMap.on('moveend', () => {
             const center = toLonLat(initialMap.getView().getCenter());
+            // Debounce this inside fetchNearbyUsers or here? 
+            // Ideally we shouldn't spam the API. 
+            // For now, let's rely on manual refresh or radius change, 
+            // but user requested "Global Connection philosophy".
+            // Let's call it but maybe userSource limits flickering.
             fetchNearbyUsers(center[1], center[0]);
         });
 
-        // Initial fetch if we have user location
-        if (user && user.location && user.location.coordinates) {
-            const [lng, lat] = user.location.coordinates;
-            initialMap.getView().animate({ center: fromLonLat([lng, lat]), zoom: 11 });
-            fetchNearbyUsers(lat, lng);
-        }
-
         return () => initialMap.setTarget(null);
-    }, [userSource, fetchNearbyUsers, user]); // Re-run if user/fetchNearbyUsers changes
+    }, []); // Empty dependency array to fix Ocean Reset Bug
+
+    // Handle User Location Updates & Radius Circle
+    useEffect(() => {
+        if (!map || !user || !user.location || !user.location.coordinates) return;
+
+        const [lng, lat] = user.location.coordinates;
+        const userCoord = fromLonLat([lng, lat]);
+
+        // Clear previous self markers
+        selfSource.clear();
+
+        // 1. My Location Marker (Blue)
+        const selfFeature = new Feature({
+            geometry: new Point(userCoord)
+        });
+        selfFeature.setStyle(new Style({
+            image: new Circle({
+                radius: 10,
+                fill: new Fill({ color: '#2196f3' }), // Blue
+                stroke: new Stroke({ color: 'white', width: 3 })
+            })
+        }));
+        selfSource.addFeature(selfFeature);
+
+        // 2. Radius Circle
+        // OpenLayers Circle geometry is in map projection units (meters if View is generic, depends).
+        // Since we are using EPSG:3857 (Web Mercator) from OSM, Circle radius is tricky near poles.
+        // Best approach: Use a circular polygon or adjust radius resolution.
+        // Simple approach: Tissot's indicatrix approximation or just geometry.Circle with transformation?
+        // Let's use ol/geom/Circle with proper projection handling or draw a polygon approximation.
+        // Actually, creating a circle in LonLat and transforming it is standard.
+        // However, ol.geom.Circle takes radius in projection units.
+        // 1 meter at equator is approx 1 unit in 3857.
+        // Let's use `circular` from `ol/geom/Polygon` if available or approximation.
+        // For simplicity in this fix, we will use a rough approximation: radius * 1000 meters
+        // Note: In Web Mercator, meters distortion increases with latitude.
+        // A better way is to make a circular polygon.
+
+        // Let's try simple Circle first, recognizing it might be slightly distorted.
+        // Radius in meters / resolution at latitude.
+        const metersPerUnit = map.getView().getProjection().getMetersPerUnit();
+        // This is complex. Let's use a simpler visual for now or just the pin.
+        // User requested "Radius Circle".
+        // Let's try drawing a feature with a style that is a circle, but that's fixed pixels.
+        // We need a geometry circle.
+
+        // Simplified:
+        const circleParams = {
+            center: userCoord,
+            radius: radius * 1000 // This is technically in map units, which is roughly meters at equator.
+        };
+        // Adjustment factor for latitude: 1 / cos(lat)
+        const scale = 1 / Math.cos(lat * Math.PI / 180);
+
+        const circleFeature = new Feature({
+            geometry: new Circle(userCoord, (radius * 1000) * scale) // Adjust for latitude distortion
+        });
+        circleFeature.setStyle(new Style({
+            fill: new Fill({ color: 'rgba(33, 150, 243, 0.1)' }), // Blue with 0.1 opacity
+            stroke: new Stroke({ color: '#2196f3', width: 1 })
+        }));
+        selfSource.addFeature(circleFeature);
+
+        // Center map on user ONLY on first load or explicit request
+        // map.getView().animate({ center: userCoord, zoom: 11 }); // Removed to prevent "Ocean Bug" causing forced jumps
+
+        // Fetch users around ME initially
+        fetchNearbyUsers(lat, lng);
+
+    }, [map, user, radius, selfSource, fetchNearbyUsers]);
 
     // Socket for Chat
     useEffect(() => {
@@ -236,8 +317,10 @@ const MapComponent = () => {
                     onChange={(e, newVal) => setRadius(newVal)}
                     onChangeCommitted={(e, newVal) => {
                         // Re-fetch when slider stops moving
-                        const center = toLonLat(map.getView().getCenter());
-                        fetchNearbyUsers(center[1], center[0]);
+                        if (map) {
+                            const center = toLonLat(map.getView().getCenter());
+                            fetchNearbyUsers(center[1], center[0]);
+                        }
                     }}
                     min={1}
                     max={10}
@@ -290,8 +373,10 @@ const MapComponent = () => {
 
             <IconButton sx={{ position: 'absolute', bottom: 120, right: 20, bgcolor: 'white' }} onClick={() => {
                 navigator.geolocation.getCurrentPosition((pos) => {
-                    map.getView().animate({ center: fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 12 });
-                    fetchNearbyUsers(pos.coords.latitude, pos.coords.longitude);
+                    if (map) {
+                        map.getView().animate({ center: fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 12 });
+                        fetchNearbyUsers(pos.coords.latitude, pos.coords.longitude);
+                    }
                 });
             }}>
                 <Crosshair color="#1976d2" />

@@ -220,6 +220,7 @@ app.get('/api/users/nearby', requireAuth, async (req, res) => {
                     $maxDistance: maxDistance
                 }
             },
+            lastLogin: { $gt: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // Active within last 24h
             _id: { $ne: userId } // Exclude self
         }).select('displayName interests location profilePhoto bio');
 

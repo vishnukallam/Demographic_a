@@ -74,7 +74,8 @@ async function seedUsers() {
                     type: 'Point',
                     coordinates: [lng, lat] // MongoDB expects [lng, lat]
                 },
-                profilePhoto: null
+                profilePhoto: null,
+                lastLogin: new Date(Date.now() - Math.floor(Math.random() * 24 * 60 * 60 * 1000)) // Active within last 24h
             });
         }
 

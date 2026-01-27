@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Box, Button, TextField, Typography, Paper, Alert, Divider, Link } from '@mui/material';
-import { LogIn } from 'lucide-react';
+import { Box, Button, TextField, Typography, Paper, Alert, Divider, Link, InputAdornment, IconButton } from '@mui/material';
+import { LogIn, Visibility, VisibilityOff } from 'lucide-react';
 import { loginUser } from '../store/authSlice';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ const Login = () => {
         email: '',
         password: ''
     });
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -64,11 +65,24 @@ const Login = () => {
                         fullWidth
                         label="Password"
                         name="password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={formData.password}
                         onChange={handleChange}
                         margin="normal"
                         required
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        aria-label="toggle password visibility"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        edge="end"
+                                    >
+                                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
                     />
 
                     <Button
