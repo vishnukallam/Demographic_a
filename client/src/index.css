@@ -3,19 +3,14 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.9);
-  background: #0f172a; /* Slate 900 - Premium Dark */
-  background: linear-gradient(to bottom right, #0f172a, #1e293b);
-  background-attachment: fixed;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   width: 100%;
@@ -23,32 +18,25 @@ html, body {
   overflow-x: hidden;
 }
 
-/* Scrollbar Styling */
+/* Scrollbar Styling - Themed dynamically via MUI CssBaseline usually, but hardcoded fallback here is fine for now */
 ::-webkit-scrollbar {
   width: 8px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #0f172a; 
+  background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #334155; 
+  background: rgba(100, 116, 139, 0.5);
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569; 
+  background: rgba(100, 116, 139, 0.8);
 }
 
 a {
-  font-weight: 500;
-  color: #38bdf8; /* Sky 400 */
   text-decoration: inherit;
   transition: color 0.2s;
-}
-a:hover {
-  color: #7dd3fc;
-}
-
-/* Global Reset for MUI compatibility overrides */
-body {
-  background-color: transparent !important;
 }
