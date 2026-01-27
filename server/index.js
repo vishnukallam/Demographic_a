@@ -240,6 +240,83 @@ app.get('/api/users/nearby', requireAuth, async (req, res) => {
     }
 });
 
+// Temporary Seeding Route (Protected by simple secret)
+app.get('/api/admin/seed', async (req, res) => {
+    const { secret } = req.query;
+    if (secret !== 'KONNECT_SECRET_SEED') {
+        return res.status(403).json({ error: 'Unauthorized access to seeding' });
+    }
+
+    try {
+        console.log('Starting remote seeding...');
+        const bcrypt = require('bcryptjs');
+
+        // Clear existing seed users
+        await User.deleteMany({ email: { $regex: /@example\.com$/ } });
+        console.log('Cleared previous seed users');
+
+        // Data Helpers
+        const INTERESTS_LIST = [
+            'Sports & Outdoors', 'Special Interest Travel', 'Business & Industry',
+            'Entertainment & Media', 'Food & Drink', 'Home Family & Pets',
+            'Lifestyle & Values', 'Science & Education', 'Automotive',
+            'Art & Design', 'History & Humanities', 'Programming and Technologies'
+        ];
+        const NAMES = [
+            "Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan", "Krishna", "Ishaan",
+            "Diya", "Saanvi", "Aditi", "Myra", "Ananya", "Pari", "Riya", "Aarya", "Anika", "Navya",
+            "Ganesh", "Ravi", "Suresh", "Ramesh", "Lakshmi", "Venkatesh", "Srinivas", "Nagarjuna", "Chiranjeevi", "Pawan",
+            "Mahesh", "Prabhas", "Allu", "Ram", "NTR", "Vijay", "Samantha", "Kajal", "Tamannaah", "Rashmika",
+            "Charan", "Tarak", "Bunny", "Cherry", "Nani", "Karthik", "Surya", "Vikram", "Dhanush", "Siddharth",
+            "Amara", "Bhavya", "Chandana", "Deepika", "Esha", "Farida", "Gitanjali", "Harini", "Indu", "Jaya",
+            "Kavya", "Lavanya", "Meghana", "Nithya", "Oormila", "Padma", "Quincy", "Radha", "Sandhya", "Tejaswini",
+            "Uma", "Vani", "Yamini", "Zara", "Abhi", "Balaji", "Chaitanya", "Deepak", "Eswar", "Gopi"
+        ];
+        const getRandomCoordinate = (min, max) => Math.random() * (max - min) + min;
+        const getRandomInterests = () => {
+            const num = Math.floor(Math.random() * 3) + 1;
+            const shuffled = INTERESTS_LIST.sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, num);
+        };
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash('password123', salt);
+
+        const users = [];
+        // Determine Bounds (Andhra Pradesh)
+        const LAT_MIN = 12.5, LAT_MAX = 19.0;
+        const LNG_MIN = 77.0, LNG_MAX = 84.5;
+
+        for (let i = 0; i < 80; i++) {
+            const name = NAMES[i % NAMES.length] + ` ${Math.floor(Math.random() * 100)}`;
+            const lat = getRandomCoordinate(LAT_MIN, LAT_MAX);
+            const lng = getRandomCoordinate(LNG_MIN, LNG_MAX);
+
+            users.push({
+                displayName: name,
+                email: `user${i}_${Date.now()}@example.com`,
+                password: hashedPassword,
+                bio: 'This is a simulated user for KON-NECT.',
+                interests: getRandomInterests(),
+                location: {
+                    type: 'Point',
+                    coordinates: [lng, lat]
+                },
+                profilePhoto: null,
+                lastLogin: new Date(Date.now() - Math.floor(Math.random() * 24 * 60 * 60 * 1000))
+            });
+        }
+
+        await User.insertMany(users);
+        console.log(`✅ Successfully seeded ${users.length} users.`);
+        res.json({ success: true, message: `Seeded ${users.length} users successfully.` });
+
+    } catch (err) {
+        console.error('Seeding failed:', err);
+        res.status(500).json({ error: 'Seeding failed', details: err.message });
+    }
+});
+
 // Get Global Users (For when no one is nearby or explicit global search)
 app.get('/api/users/global', requireAuth, async (req, res) => {
     try {

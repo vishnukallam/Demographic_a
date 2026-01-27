@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Button, TextField, Typography, Paper, Alert, Divider, Link, InputAdornment, IconButton } from '@mui/material';
-import { LogIn, Visibility, VisibilityOff } from 'lucide-react';
+import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { loginUser } from '../store/authSlice';
 import { useNavigate } from 'react-router-dom';
 
@@ -78,7 +78,7 @@ const Login = () => {
                                         onClick={() => setShowPassword(!showPassword)}
                                         edge="end"
                                     >
-                                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                                        {showPassword ? <EyeOff /> : <Eye />}
                                     </IconButton>
                                 </InputAdornment>
                             )
