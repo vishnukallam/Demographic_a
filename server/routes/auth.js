@@ -39,10 +39,10 @@ router.post('/register', async (req, res) => {
 
         // Generate Initials Avatar Fallback
         const getInitials = (name) => {
-             const parts = (name || '').split(' ').filter(Boolean);
-             if (parts.length === 0) return '?';
-             if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+            const parts = (name || '').split(' ').filter(Boolean);
+            if (parts.length === 0) return '?';
+            if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
         };
         const initials = getInitials(displayName);
 
@@ -81,7 +81,6 @@ router.post('/register', async (req, res) => {
 
     } catch (err) {
         console.error('Registration Error:', err);
-        // Return detailed error only if safe/dev, but for now generic with logging
         res.status(500).json({ error: 'Server error during registration', details: err.message });
     }
 });
@@ -118,10 +117,10 @@ router.post('/login', async (req, res) => {
 
         // Calculate initials for login response too
         const getInitials = (name) => {
-             const parts = (name || '').split(' ').filter(Boolean);
-             if (parts.length === 0) return '?';
-             if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-             return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+            const parts = (name || '').split(' ').filter(Boolean);
+            if (parts.length === 0) return '?';
+            if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
         };
 
         res.json({

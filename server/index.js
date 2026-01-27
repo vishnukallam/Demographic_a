@@ -72,6 +72,7 @@ mongoose.connect(mongoUri)
     .then(() => console.log('MongoDB Connected'))
     .catch(err => {
         console.error('MongoDB Connection Error:', err);
+        process.exit(1); // Exit so platform restarts or logs failure clearly
     });
 
 const allowedOrigin = (process.env.CLIENT_URL || "https://demographic-alpha.vercel.app").replace(/\/$/, "");
