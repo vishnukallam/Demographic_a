@@ -248,7 +248,7 @@ app.get('/api/admin/seed', async (req, res) => {
     }
 
     try {
-        console.log('Starting remote seeding...');
+        console.log('Starting remote seeding (Land Only)...');
         const bcrypt = require('bcryptjs');
 
         // Clear existing seed users
@@ -256,12 +256,24 @@ app.get('/api/admin/seed', async (req, res) => {
         console.log('Cleared previous seed users');
 
         // Data Helpers
-        const INTERESTS_LIST = [
-            'Sports & Outdoors', 'Special Interest Travel', 'Business & Industry',
-            'Entertainment & Media', 'Food & Drink', 'Home Family & Pets',
-            'Lifestyle & Values', 'Science & Education', 'Automotive',
-            'Art & Design', 'History & Humanities', 'Programming and Technologies'
+        const CITIES = [
+            { name: 'Hyderabad', lat: 17.3850, lng: 78.4867 },
+            { name: 'Vijayawada', lat: 16.5062, lng: 80.6480 },
+            { name: 'Visakhapatnam', lat: 17.6868, lng: 83.2185 },
+            { name: 'Guntur', lat: 16.3067, lng: 80.4365 },
+            { name: 'Nellore', lat: 14.4426, lng: 79.9865 },
+            { name: 'Kurnool', lat: 15.8281, lng: 78.0373 },
+            { name: 'Rajahmundry', lat: 17.0005, lng: 81.8040 },
+            { name: 'Tirupati', lat: 13.6288, lng: 79.4192 },
+            { name: 'Kakinada', lat: 16.9891, lng: 82.2475 },
+            { name: 'Warangal', lat: 17.9689, lng: 79.5941 },
+            { name: 'Mumbai', lat: 19.0760, lng: 72.8777 },
+            { name: 'Delhi', lat: 28.7041, lng: 77.1025 },
+            { name: 'Bangalore', lat: 12.9716, lng: 77.5946 },
+            { name: 'Chennai', lat: 13.0827, lng: 80.2707 },
+            { name: 'Kolkata', lat: 22.5726, lng: 88.3639 }
         ];
+
         const NAMES = [
             "Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan", "Krishna", "Ishaan",
             "Diya", "Saanvi", "Aditi", "Myra", "Ananya", "Pari", "Riya", "Aarya", "Anika", "Navya",
@@ -272,35 +284,54 @@ app.get('/api/admin/seed', async (req, res) => {
             "Kavya", "Lavanya", "Meghana", "Nithya", "Oormila", "Padma", "Quincy", "Radha", "Sandhya", "Tejaswini",
             "Uma", "Vani", "Yamini", "Zara", "Abhi", "Balaji", "Chaitanya", "Deepak", "Eswar", "Gopi"
         ];
-        const getRandomCoordinate = (min, max) => Math.random() * (max - min) + min;
+
+        const INTERESTS_LIST = [
+            'Sports & Outdoors', 'Special Interest Travel', 'Business & Industry',
+            'Entertainment & Media', 'Food & Drink', 'Home Family & Pets',
+            'Lifestyle & Values', 'Science & Education', 'Automotive',
+            'Art & Design', 'History & Humanities', 'Programming and Technologies'
+        ];
+
         const getRandomInterests = () => {
             const num = Math.floor(Math.random() * 3) + 1;
             const shuffled = INTERESTS_LIST.sort(() => 0.5 - Math.random());
             return shuffled.slice(0, num);
         };
 
+        // Function to generate random point within X km of a city
+        const getRandomLocationNearCity = (city, radiusKm = 5) => {
+            const r = radiusKm / 111.32; // Rough conversion to degrees
+            const u = Math.random();
+            const v = Math.random();
+            const w = r * Math.sqrt(u);
+            const t = 2 * Math.PI * v;
+            const x = w * Math.cos(t);
+            const y = w * Math.sin(t);
+
+            const newLat = city.lat + x;
+            const newLng = city.lng + y / Math.cos(city.lat * Math.PI / 180);
+            return { lat: newLat, lng: newLng };
+        };
+
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash('password123', salt);
 
         const users = [];
-        // Determine Bounds (Andhra Pradesh)
-        const LAT_MIN = 12.5, LAT_MAX = 19.0;
-        const LNG_MIN = 77.0, LNG_MAX = 84.5;
 
-        for (let i = 0; i < 80; i++) {
-            const name = NAMES[i % NAMES.length] + ` ${Math.floor(Math.random() * 100)}`;
-            const lat = getRandomCoordinate(LAT_MIN, LAT_MAX);
-            const lng = getRandomCoordinate(LNG_MIN, LNG_MAX);
+        for (let i = 0; i < 100; i++) {
+            const city = CITIES[i % CITIES.length];
+            const loc = getRandomLocationNearCity(city, 8); // Within 8km
+            const name = NAMES[i % NAMES.length] + ` ${Math.floor(Math.random() * 99)}`;
 
             users.push({
                 displayName: name,
                 email: `user${i}_${Date.now()}@example.com`,
                 password: hashedPassword,
-                bio: 'This is a simulated user for KON-NECT.',
+                bio: `Hello from ${city.name}! I love connecting.`,
                 interests: getRandomInterests(),
                 location: {
                     type: 'Point',
-                    coordinates: [lng, lat]
+                    coordinates: [loc.lng, loc.lat]
                 },
                 profilePhoto: null,
                 lastLogin: new Date(Date.now() - Math.floor(Math.random() * 24 * 60 * 60 * 1000))
@@ -308,8 +339,8 @@ app.get('/api/admin/seed', async (req, res) => {
         }
 
         await User.insertMany(users);
-        console.log(`✅ Successfully seeded ${users.length} users.`);
-        res.json({ success: true, message: `Seeded ${users.length} users successfully.` });
+        console.log(`✅ Successfully seeded ${users.length} users across major Indian cities.`);
+        res.json({ success: true, message: `Seeded ${users.length} users successfully (On Land).` });
 
     } catch (err) {
         console.error('Seeding failed:', err);
