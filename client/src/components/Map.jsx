@@ -214,7 +214,7 @@ const MapComponent = () => {
 
     // Socket for Chat
     useEffect(() => {
-        const apiUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'; // Make sure port matches
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000'; // Make sure port matches
         socketRef.current = io(apiUrl, { withCredentials: true });
         setSocketReady(true);
 
