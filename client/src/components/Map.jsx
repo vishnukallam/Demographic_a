@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useContext } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useContext, createContext } from 'react';
 import 'ol/ol.css';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -7,71 +7,139 @@ import OSM from 'ol/source/OSM';
 import VectorLayer from 'ol/layer/Vector';
 import VectorSource from 'ol/source/Vector';
 import { Feature } from 'ol';
-import { Point, Circle as GeomCircle } from 'ol/geom';
+import { Point, Circle as GeomCircle, LineString } from 'ol/geom';
 import { Style, Circle as StyleCircle, Fill, Stroke, Text } from 'ol/style';
 import { fromLonLat, toLonLat } from 'ol/proj';
-import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Typography, Button, Avatar, Slider, Snackbar, Alert, Switch, useTheme } from '@mui/material';
-import { Search, Crosshair, MessageSquare, Globe, Palette } from 'lucide-react';
+import { Box, Paper, InputBase, IconButton, List, ListItem, ListItemText, Divider, Typography, Button, Avatar, Slider, Snackbar, Alert, Switch, useTheme, Fab } from '@mui/material';
+import { Search, Crosshair, MessageSquare, Globe, Palette, Navigation, User } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import io from 'socket.io-client';
 import ChatOverlay from './ChatOverlay';
 import api from '../utils/api';
 import { ColorModeContext } from '../App';
+import Polyline from 'ol/format/Polyline'; // For OSRM decoding if needed, or manual parsing
 
+// --- Map Context & Controller ---
+const MapContext = createContext(null);
+
+const MapController = ({ center, zoom, active }) => {
+    const { map } = useContext(MapContext);
+
+    useEffect(() => {
+        if (!map || !center || !active) return;
+        // FlyTo animation for smoother transitions
+        map.getView().animate({
+            center: center,
+            zoom: zoom || 12,
+            duration: 1500, // Smooth fly
+            easing: (t) => t // Linear for now, or import easeOut
+        });
+    }, [map, center, zoom, active]);
+
+    return null;
+};
+
+// --- Main Map Component ---
 const MapComponent = () => {
     const mapRef = useRef();
     const [map, setMap] = useState(null);
     const [userSource] = useState(new VectorSource());
+    const [selfSource] = useState(new VectorSource());
+    const [routeSource] = useState(new VectorSource()); // Layer for Navigation Route
+
     const [searchQuery, setSearchQuery] = useState('');
     const [suggestions, setSuggestions] = useState([]);
     const [radius, setRadius] = useState(10);
     const [showGlobalAlert, setShowGlobalAlert] = useState(false);
-
-    // New State for Filters
     const [showGlobalUsers, setShowGlobalUsers] = useState(false);
+
+    // Controller State
+    const [viewState, setViewState] = useState({ center: fromLonLat([80.6480, 16.5062]), zoom: 9, active: false });
+
+    // Routing State
+    const [myLocation, setMyLocation] = useState(null); // {lat, lng}
 
     const { user } = useSelector(state => state.auth);
     const socketRef = useRef(null);
     const [socketReady, setSocketReady] = useState(false);
 
-    // Theme & Context
+    // Theme
     const theme = useTheme();
     const { toggleColorMode, setAccent, mode } = useContext(ColorModeContext);
 
-    // Popover State
+    // Interaction State
     const [selectedUser, setSelectedUser] = useState(null);
-    // Chat State
     const [chatTarget, setChatTarget] = useState(null);
 
-    // Helper to check interest match
+    // --- Helpers ---
     const checkInterestMatch = (userInterests, myInterests) => {
         if (!userInterests || !myInterests) return false;
         const set1 = new Set(myInterests.map(i => typeof i === 'string' ? i : i.name));
         return userInterests.some(i => set1.has(typeof i === 'string' ? i : i.name));
     };
 
-    // My Location & Radius Source
-    const [selfSource] = useState(new VectorSource());
+    // --- OSRM Navigation ---
+    const handleNavigate = async (targetLeg) => { // targetLeg: {lat, lng}
+        if (!myLocation || !targetLeg) return;
 
-    // Fetch Users based on dynamic radius
+        try {
+            // Un-hide if needed (logic to clear route?)
+            routeSource.clear();
+
+            // OSRM Public API (Demo server)
+            // Coordinates in OSRM are {lon},{lat};{lon},{lat}
+            const start = `${myLocation.lng},${myLocation.lat}`;
+            const end = `${targetLeg.lng},${targetLeg.lat}`;
+            const url = `https://router.project-osrm.org/route/v1/walking/${start};${end}?overview=full&geometries=geojson`;
+
+            const resp = await fetch(url);
+            const data = await resp.json();
+
+            if (data.routes && data.routes.length > 0) {
+                const route = data.routes[0];
+                const coordinates = route.geometry.coordinates; // [[lon, lat], ...]
+
+                // Convert to Map Projection
+                const projectedCoords = coordinates.map(coord => fromLonLat(coord));
+
+                const routeFeature = new Feature({
+                    geometry: new LineString(projectedCoords)
+                });
+
+                routeFeature.setStyle(new Style({
+                    stroke: new Stroke({
+                        color: theme.palette.primary.main,
+                        width: 5,
+                        lineDash: [10, 10] // Walking path style
+                    })
+                }));
+
+                routeSource.addFeature(routeFeature);
+
+                // Zoom to fit route
+                const extent = routeFeature.getGeometry().getExtent();
+                map.getView().fit(extent, { padding: [50, 50, 50, 50], duration: 1000 });
+
+                setSelectedUser(null); // Close popover to show route
+            }
+        } catch (e) {
+            console.error("Routing Error", e);
+            alert("Could not fetch walking path.");
+        }
+    };
+
+    // --- Fetch Users ---
     const fetchNearbyUsers = useCallback(async (centerLat, centerLng, forceGlobal = false) => {
         if (!centerLat || !centerLng) return;
         try {
             let users = [];
-
             if (!forceGlobal) {
                 const res = await api.get('/api/users/nearby', {
-                    params: {
-                        lat: centerLat,
-                        lng: centerLng,
-                        radius: radius,
-                        interests: 'all' // We fetch all first, then style/filter client side for smoothness
-                    }
+                    params: { lat: centerLat, lng: centerLng, radius: radius, interests: 'all' }
                 });
                 users = res.data;
             }
 
-            // Fallback to Global if no users found
             if (users.length === 0) {
                 if (!forceGlobal) setShowGlobalAlert(true);
                 const resGlobal = await api.get('/api/users/global');
@@ -81,10 +149,25 @@ const MapComponent = () => {
             }
 
             userSource.clear();
-
             users.forEach(u => {
-                if (!u.location || !u.location.coordinates) return;
+                if (!u.location?.coordinates) return;
                 const [lng, lat] = u.location.coordinates;
+
+                // Filter Logic
+                const isMatch = user && checkInterestMatch(u.interests, user.interests);
+                if (!showGlobalUsers && !isMatch) return;
+
+                const isOnline = u.lastLogin && (new Date() - new Date(u.lastLogin)) < (15 * 60 * 1000);
+
+                // Marker Styling (Material You Colors)
+                let fillColor = theme.palette.text.disabled;
+                let strokeColor = theme.palette.background.paper;
+
+                if (isOnline) {
+                    fillColor = isMatch ? theme.palette.primary.main : theme.palette.warning.main;
+                } else {
+                    fillColor = theme.palette.action.disabledBackground; // Grey
+                }
 
                 const feature = new Feature({
                     geometry: new Point(fromLonLat([lng, lat])),
@@ -92,53 +175,33 @@ const MapComponent = () => {
                     data: u
                 });
 
-                // Style Logic
-                const isMatch = user && checkInterestMatch(u.interests, user.interests);
-
-                // If "Show Compatible Only" is ON (showGlobalUsers === false) AND not a match, skip adding
-                // EXCEPTION: Always show matched users. If toggled to Global, show everyone.
-                if (!showGlobalUsers && !isMatch) return;
-
-                // Online Status Logic (15 mins threshold)
-                const isOnline = u.lastLogin && (new Date() - new Date(u.lastLogin)) < (15 * 60 * 1000);
-
-                // Colors
-                let color = theme.palette.text.disabled;
-                let strokeColor = theme.palette.background.paper;
-
-                if (isOnline) {
-                    color = isMatch ? theme.palette.success.main : theme.palette.warning.main;
-                } else {
-                    // Offline users: Greyed out
-                    color = theme.palette.grey[500];
-                }
-
                 feature.setStyle(new Style({
                     image: new StyleCircle({
-                        radius: 8,
-                        fill: new Fill({ color: color }),
-                        stroke: new Stroke({ color: strokeColor, width: 2 })
+                        radius: 10, // Slightly larger
+                        fill: new Fill({ color: fillColor }),
+                        stroke: new Stroke({ color: strokeColor, width: 3 })
                     }),
+                    // Only show name on hover or close zoom ideally, but keeping it for now
                     text: new Text({
                         text: u.displayName,
-                        offsetY: -20,
-                        font: 'bold 13px Inter, sans-serif',
+                        offsetY: -22,
+                        font: '600 12px "Roboto Flex"',
                         fill: new Fill({ color: theme.palette.text.primary }),
-                        stroke: new Stroke({ color: theme.palette.background.paper, width: 3 })
+                        stroke: new Stroke({ color: theme.palette.background.paper, width: 3 }),
+                        scale: 1
                     })
                 }));
                 userSource.addFeature(feature);
             });
 
         } catch (err) {
-            console.error("Failed to fetch nearby users:", err);
+            console.error("Fetch Error:", err);
         }
     }, [radius, userSource, user, showGlobalUsers, theme]);
 
-    // Initial Map Setup (Run ONCE)
+    // --- Initialization ---
     useEffect(() => {
-        const initialCenter = fromLonLat([80.6480, 16.5062]);
-
+        // Initialize Map ONCE
         const initialMap = new Map({
             target: mapRef.current,
             layers: [
@@ -146,292 +209,288 @@ const MapComponent = () => {
                     source: new OSM(),
                     className: 'map-tile-layer'
                 }),
-                new VectorLayer({ source: userSource, zIndex: 10 }),
-                new VectorLayer({ source: selfSource, zIndex: 5 })
+                new VectorLayer({ source: routeSource, zIndex: 1 }), // Route below users
+                new VectorLayer({ source: selfSource, zIndex: 5 }),
+                new VectorLayer({ source: userSource, zIndex: 10 })
             ],
             view: new View({
-                center: initialCenter,
+                center: fromLonLat([80.6480, 16.5062]),
                 zoom: 9
-            })
+            }),
+            controls: [] // Custom controls only
         });
 
         setMap(initialMap);
 
-        // Implicit Location Update
-        if (navigator.geolocation && user) {
-            navigator.geolocation.watchPosition((pos) => {
-                const { latitude, longitude } = pos.coords;
-                // Emit location update
-                if (socketRef.current && socketRef.current.connected) {
-                    socketRef.current.emit('update_location', { lat: latitude, lng: longitude });
-                }
-
-                const userCoord = fromLonLat([longitude, latitude]);
-                selfSource.clear();
-
-                // 1. My Location Marker
-                const selfFeature = new Feature({ geometry: new Point(userCoord) });
-                selfFeature.setStyle(new Style({
-                    image: new StyleCircle({
-                        radius: 12,
-                        fill: new Fill({ color: theme.palette.primary.main }),
-                        stroke: new Stroke({ color: '#fff', width: 3 })
-                    })
-                }));
-                selfSource.addFeature(selfFeature);
-
-                // 2. Radius Circle - GREEN TRANSPARENT
-                const scale = 1 / Math.cos(latitude * Math.PI / 180);
-                const circleFeature = new Feature({
-                    geometry: new GeomCircle(userCoord, (radius * 1000) * scale)
-                });
-                circleFeature.setStyle(new Style({
-                    fill: new Fill({ color: 'rgba(34, 197, 94, 0.2)' }), // Green-ish transparent
-                    stroke: new Stroke({ color: 'rgba(34, 197, 94, 0.6)', width: 1.5 })
-                }));
-                selfSource.addFeature(circleFeature);
-
-            }, (err) => console.error("Location access error", err), {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000
-            });
-
-            // Initial Center
-            navigator.geolocation.getCurrentPosition(pos => {
-                const { latitude, longitude } = pos.coords;
-                initialMap.getView().animate({ center: fromLonLat([longitude, latitude]), zoom: 11 });
-                fetchNearbyUsers(latitude, longitude);
-            });
-        }
-
-    }, []);
-
-    // Update markers when radius or filters change
-    useEffect(() => {
-        if (!map) return;
-        const center = toLonLat(map.getView().getCenter());
-        fetchNearbyUsers(center[1], center[0]);
-    }, [radius, showGlobalUsers, theme, fetchNearbyUsers]);
-
-    // Map Event Listeners
-    useEffect(() => {
-        if (!map) return;
-
-        const clickHandler = (e) => {
-            const feature = map.forEachFeatureAtPixel(e.pixel, (f) => f);
+        // Click Handler
+        initialMap.on('click', (e) => {
+            const feature = initialMap.forEachFeatureAtPixel(e.pixel, f => f);
             if (feature && feature.get('type') === 'user') {
                 setSelectedUser(feature.get('data'));
             } else {
                 setSelectedUser(null);
             }
-        };
+        });
 
-        const moveHandler = () => {
-            const center = toLonLat(map.getView().getCenter());
-            fetchNearbyUsers(center[1], center[0]);
-        };
+        // Move End Handler for refreshing search results if needed
+        initialMap.on('moveend', () => {
+            // Optional: Refetch users on drag? 
+            // Currently users are fetched based on "My Location" or "Search Location"
+        });
 
-        map.on('click', clickHandler);
-        map.on('moveend', moveHandler);
+        return () => initialMap.setTarget(null);
+    }, []);
 
-        return () => {
-            map.un('click', clickHandler);
-            map.un('moveend', moveHandler);
-        };
-    }, [map, fetchNearbyUsers]);
+    // --- Location Tracking & Updates ---
+    useEffect(() => {
+        if (navigator.geolocation && user && map) {
+            const watchId = navigator.geolocation.watchPosition((pos) => {
+                const { latitude, longitude } = pos.coords;
+                setMyLocation({ lat: latitude, lng: longitude });
 
-    // Socket
+                // Socket Update
+                if (socketRef.current?.connected) {
+                    socketRef.current.emit('update_location', { lat: latitude, lng: longitude });
+                }
+
+                // Update Self Marker & Radius
+                const userCoord = fromLonLat([longitude, latitude]);
+                selfSource.clear();
+
+                const selfFeature = new Feature({ geometry: new Point(userCoord) });
+                selfFeature.setStyle(new Style({
+                    image: new StyleCircle({
+                        radius: 14,
+                        fill: new Fill({ color: theme.palette.primary.main }),
+                        stroke: new Stroke({ color: '#fff', width: 4 })
+                    })
+                }));
+                selfSource.addFeature(selfFeature);
+
+                // Radius Circle (Themed)
+                const scale = 1 / Math.cos(latitude * Math.PI / 180);
+                const circleFeature = new Feature({
+                    geometry: new GeomCircle(userCoord, (radius * 1000) * scale)
+                });
+                circleFeature.setStyle(new Style({
+                    fill: new Fill({ color: theme.palette.primary.main + '33' }), // 20% opacity hex
+                    stroke: new Stroke({ color: theme.palette.primary.main, width: 1, lineDash: [5, 5] })
+                }));
+                selfSource.addFeature(circleFeature);
+
+                // Initial fetch
+                fetchNearbyUsers(latitude, longitude);
+
+            }, (err) => console.warn(err), { enableHighAccuracy: true });
+
+            return () => navigator.geolocation.clearWatch(watchId);
+        }
+    }, [map, user, radius, theme, fetchNearbyUsers]);
+
+    // Update fetch when radius/filter changes
+    useEffect(() => {
+        if (myLocation) fetchNearbyUsers(myLocation.lat, myLocation.lng);
+    }, [radius, showGlobalUsers, fetchNearbyUsers, myLocation]);
+
+    // Socket Setup
     useEffect(() => {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         socketRef.current = io(apiUrl, { withCredentials: true });
         setSocketReady(true);
-
-        if (user) {
-            socketRef.current.emit('register_user', user._id || user.id);
-        }
-
+        if (user) socketRef.current.emit('register_user', user._id || user.id);
         socketRef.current.on('chat_request', ({ from, fromName, roomId }) => {
-            setChatTarget({
-                _id: from,
-                displayName: fromName || 'User',
-                roomId: roomId
-            });
+            setChatTarget({ _id: from, displayName: fromName || 'User', roomId: roomId });
             socketRef.current.emit('accept_chat', { roomId });
         });
-
         return () => socketRef.current.disconnect();
     }, [user]);
 
+    // Handlers
     const handleSelectLocation = (place) => {
         const lat = parseFloat(place.lat);
         const lon = parseFloat(place.lon);
-        const coord = fromLonLat([lon, lat]);
-        map.getView().animate({ center: coord, zoom: 12 });
+        setViewState({ center: fromLonLat([lon, lat]), zoom: 12, active: true });
         setSuggestions([]);
         setSearchQuery(place.display_name.split(',')[0]);
+        // Also fetch users at this new "virtual" location?
         fetchNearbyUsers(lat, lon);
     };
 
-    const handleStartChat = () => {
-        if (selectedUser) {
-            setChatTarget(selectedUser);
-            setSelectedUser(null);
+    const handleCenterOnMe = () => {
+        if (myLocation) {
+            setViewState({ center: fromLonLat([myLocation.lng, myLocation.lat]), zoom: 14, active: true });
         }
     };
 
-    const colors = ['red', 'green', 'blue', 'violet', 'indigo', 'orange', 'yellow'];
-
     return (
-        <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
+        <MapContext.Provider value={{ map }}>
+            <Box sx={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
 
-            {/* Theme & Filter Controls (Top Right) */}
-            <Paper sx={{
-                position: 'absolute', top: 20, right: 20, zIndex: 100, p: 2,
-                display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end',
-                borderRadius: 3
-            }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="caption" fontWeight="bold">Show All Users</Typography>
+                {/* Controller Logic */}
+                <MapController center={viewState.center} zoom={viewState.zoom} active={viewState.active} />
+
+                {/* 1. Theme & Settings Panel */}
+                <Paper elevation={0} sx={{
+                    position: 'absolute', top: 20, right: 20, zIndex: 50, p: 2,
+                    display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start',
+                    backdropFilter: 'blur(20px)', bgcolor: 'background.paper', borderRadius: 4,
+                    border: '1px solid', borderColor: 'divider'
+                }}>
                     <Switch
                         checked={showGlobalUsers}
                         onChange={(e) => setShowGlobalUsers(e.target.checked)}
-                        size="small"
+                        sx={{ ml: 'auto' }}
                     />
-                </Box>
-                <Divider sx={{ width: '100%' }} />
-                <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    {colors.map(c => (
-                        <Box
-                            key={c}
-                            onClick={() => setAccent(c)}
-                            sx={{
-                                width: 20, height: 20, borderRadius: '50%', cursor: 'pointer',
-                                bgcolor: c === 'white' ? '#fff' : (c === 'yellow' ? '#eab308' : c),
-                                border: '1px solid rgba(0,0,0,0.1)',
-                                transform: 'scale(1)',
-                                transition: 'transform 0.1s',
-                                '&:hover': { transform: 'scale(1.2)' },
-                                boxShadow: theme.palette.mode === 'dark' ? '0 0 4px rgba(255,255,255,0.2)' : 'none'
-                            }}
-                        />
-                    ))}
-                </Box>
-                <Button size="small" onClick={toggleColorMode} startIcon={<Palette size={14} />} sx={{ width: '100%' }}>
-                    {mode === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                </Button>
-            </Paper>
+                    <Typography variant="caption" sx={{ mt: -1, ml: 'auto', display: 'block' }}>
+                        {showGlobalUsers ? 'Global View' : 'Relevant Only'}
+                    </Typography>
 
-            {/* Search Bar - Theme Aware */}
-            <Box sx={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 100, width: '90%', maxWidth: 400 }}>
-                <Paper component="form" sx={{
-                    p: '2px 4px', display: 'flex', alignItems: 'center', borderRadius: 3
-                }} onSubmit={(e) => e.preventDefault()}>
-                    <InputBase
-                        sx={{ ml: 1, flex: 1 }}
-                        placeholder="Search Location"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <IconButton type="button" sx={{ p: '10px', color: 'primary.main' }}> <Search /> </IconButton>
-                </Paper>
-                {suggestions.length > 0 && (
-                    <Paper sx={{ mt: 1, maxHeight: 200, overflow: 'auto' }}>
-                        <List dense>
-                            {suggestions.map((place) => (
-                                <React.Fragment key={place.place_id}>
-                                    <ListItem button onClick={() => handleSelectLocation(place)}>
-                                        <ListItemText primary={place.display_name} />
-                                    </ListItem>
-                                    <Divider />
-                                </React.Fragment>
-                            ))}
-                        </List>
-                    </Paper>
-                )}
-            </Box>
+                    <Divider flexItem />
 
-            {/* Radius Slider Control - Theme Aware */}
-            <Paper sx={{
-                position: 'absolute', bottom: 30, left: '50%', transform: 'translateX(-50%)', zIndex: 100,
-                width: '80%', maxWidth: 400, p: 2, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                borderRadius: 4
-            }}>
-                <Typography variant="body2" color="primary" fontWeight="bold">
-                    Discovery Radius: {radius} km
-                </Typography>
-                <Slider
-                    value={radius}
-                    onChange={(e, newVal) => setRadius(newVal)}
-                    min={1} max={10} step={1}
-                    valueLabelDisplay="auto"
-                />
-            </Paper>
-
-            {/* Global Fallback Alert */}
-            <Snackbar open={showGlobalAlert} autoHideDuration={6000} onClose={() => setShowGlobalAlert(false)}>
-                <Alert severity="info" variant="filled">
-                    No matching users nearby. Showing global community.
-                </Alert>
-            </Snackbar>
-
-            {/* Map Container - Dynamic Dark Mode Filter */}
-            <div ref={mapRef} style={{ width: '100%', height: '100%', filter: mode === 'dark' ? 'grayscale(100%) invert(100%) contrast(90%) brightness(120%) hue-rotate(180deg)' : 'none' }}></div>
-
-            {/* User Popover - Theme Aware */}
-            {selectedUser && (
-                <Paper sx={{
-                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200,
-                    p: 4, minWidth: 320, textAlign: 'center', borderRadius: 4,
-                }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, mb: 2 }}>
-                        <Avatar src={selectedUser.profilePhoto} sx={{ width: 80, height: 80, border: `3px solid ${theme.palette.primary.main}` }} />
-                        <Typography variant="h5" fontWeight="bold">{selectedUser.displayName}</Typography>
-                        {selectedUser.bio && <Typography variant="body2" color="text.secondary">{selectedUser.bio}</Typography>}
-                    </Box>
-                    <Box sx={{ mt: 1, mb: 3 }}>
-                        <Typography variant="caption" display="block" color="primary" sx={{ mb: 1, fontWeight: 'bold' }}>INTERESTS</Typography>
-                        {selectedUser.interests && selectedUser.interests.map((int, i) => (
-                            <Typography key={i} variant="caption" sx={{
-                                display: 'inline-block',
-                                bgcolor: theme.palette.action.hover,
-                                color: theme.palette.text.primary,
-                                borderRadius: 1, px: 1, mx: 0.5, my: 0.2
-                            }}>
-                                {int.name || int}
-                            </Typography>
+                    {/* Color Picker */}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        {['blue', 'green', 'violet', 'orange'].map(c => (
+                            <Box key={c} onClick={() => setAccent(c)} sx={{
+                                width: 16, height: 16, borderRadius: '50%', cursor: 'pointer',
+                                bgcolor: c === 'blue' ? '#3b82f6' : c === 'green' ? '#22c55e' : c === 'violet' ? '#8b5cf6' : '#f97316',
+                                boxShadow: user?.accent === c ? '0 0 0 2px white, 0 0 0 4px ' + c : 'none'
+                            }} />
                         ))}
                     </Box>
-                    {/* Buttons centered */}
-                    <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
-                        <Button variant="contained" startIcon={<MessageSquare size={16} />} onClick={handleStartChat}>
-                            Chat
-                        </Button>
-                        <Button variant="outlined" onClick={() => setSelectedUser(null)}>Close</Button>
-                    </Box>
+
+                    <Button
+                        size="small"
+                        fullWidth
+                        startIcon={<Palette size={14} />}
+                        onClick={toggleColorMode}
+                        sx={{ mt: 1, borderRadius: 20, fontSize: '0.75rem' }}
+                    >
+                        {mode === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                    </Button>
                 </Paper>
-            )}
 
-            {/* Chat Overlay */}
-            {chatTarget && socketReady && (
-                <ChatOverlay
-                    socket={socketRef.current}
-                    user={user}
-                    targetUser={chatTarget}
-                    onClose={() => setChatTarget(null)}
-                />
-            )}
+                {/* 2. Search Bar */}
+                <Box sx={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 50, width: '90%', maxWidth: 360 }}>
+                    <Paper component="form" elevation={4} sx={{
+                        p: '4px 12px', display: 'flex', alignItems: 'center', borderRadius: 28, height: 56
+                    }} onSubmit={(e) => e.preventDefault()}>
+                        <Search size={20} color={theme.palette.text.secondary} />
+                        <InputBase
+                            sx={{ ml: 2, flex: 1, fontWeight: 500 }}
+                            placeholder="Find a place..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)} // ToDo: Add Debounced Autocomplete logic again
+                        />
+                    </Paper>
+                </Box>
 
-            <IconButton sx={{ position: 'absolute', bottom: 120, right: 20, bgcolor: 'background.paper', '&:hover': { bgcolor: 'background.default' } }} onClick={() => {
-                navigator.geolocation.getCurrentPosition((pos) => {
-                    if (map) {
-                        map.getView().animate({ center: fromLonLat([pos.coords.longitude, pos.coords.latitude]), zoom: 12 });
-                    }
-                });
-            }}>
-                <Crosshair />
-            </IconButton>
-        </Box>
+                {/* 3. Bottom Controls (Radius & Recenter) */}
+                <Paper elevation={4} sx={{
+                    position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 50,
+                    width: 'auto', minWidth: 280, p: 2, px: 4, borderRadius: 4, display: 'flex', alignItems: 'center', gap: 2
+                }}>
+                    <Typography variant="body2" fontWeight="bold" noWrap>
+                        {radius} km
+                    </Typography>
+                    <Slider
+                        value={radius}
+                        onChange={(e, v) => setRadius(v)}
+                        min={1} max={50}
+                        sx={{ width: 150 }}
+                    />
+                </Paper>
+
+                <Fab
+                    color="primary"
+                    aria-label="my-location"
+                    onClick={handleCenterOnMe}
+                    sx={{ position: 'absolute', bottom: 32, right: 32, zIndex: 50 }}
+                >
+                    <Crosshair />
+                </Fab>
+
+
+                {/* Map Container */}
+                <div ref={mapRef} style={{ width: '100%', height: '100%', filter: mode === 'dark' ? 'grayscale(100%) invert(100%) contrast(90%) brightness(120%) hue-rotate(180deg)' : 'none' }} />
+
+
+                {/* 4. User Detail Card (Glassmorphism) */}
+                {selectedUser && (
+                    <Paper elevation={24} sx={{
+                        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 100,
+                        width: 320, p: 4, borderRadius: 6,
+                        background: mode === 'dark' ? 'rgba(30,30,45,0.85)' : 'rgba(255,255,255,0.85)',
+                        backdropFilter: 'blur(16px)',
+                        textAlign: 'center',
+                        animation: 'fadeIn 0.3s ease-out'
+                    }}>
+                        <Avatar
+                            src={selectedUser.profilePhoto}
+                            sx={{ width: 96, height: 96, mx: 'auto', mb: 2, border: `4px solid ${theme.palette.background.paper}`, boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }}
+                        />
+                        <Typography variant="h5" fontWeight="800" gutterBottom>
+                            {selectedUser.displayName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3, fontStyle: 'italic' }}>
+                            {selectedUser.bio || "No bio available"}
+                        </Typography>
+
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 1, mb: 4 }}>
+                            {selectedUser.interests?.map((int, i) => (
+                                <Box key={i} sx={{
+                                    px: 1.5, py: 0.5, borderRadius: 2,
+                                    bgcolor: theme.palette.action.hover,
+                                    fontSize: '0.75rem', fontWeight: 600, color: theme.palette.text.primary
+                                }}>
+                                    {typeof int === 'string' ? int : int.name}
+                                </Box>
+                            ))}
+                        </Box>
+
+                        <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                            {/* Navigation Button */}
+                            <Button
+                                variant="contained"
+                                color="secondary"
+                                sx={{ borderRadius: 4, minWidth: 50, px: 2 }}
+                                onClick={() => handleNavigate({
+                                    lat: selectedUser.location.coordinates[1],
+                                    lng: selectedUser.location.coordinates[0]
+                                })}
+                            >
+                                <Navigation size={20} />
+                            </Button>
+
+                            <Button
+                                variant="contained"
+                                startIcon={<MessageSquare size={18} />}
+                                onClick={() => { setChatTarget(selectedUser); setSelectedUser(null); }}
+                                sx={{ borderRadius: 100, flex: 1 }}
+                            >
+                                Connect
+                            </Button>
+                        </Box>
+
+                        <IconButton
+                            onClick={() => setSelectedUser(null)}
+                            sx={{ position: 'absolute', top: 8, right: 8, color: 'text.disabled' }}
+                        >
+                            <Box component="span" sx={{ fontSize: 24 }}>&times;</Box>
+                        </IconButton>
+                    </Paper>
+                )}
+
+                {/* Chat */}
+                {chatTarget && socketReady && (
+                    <ChatOverlay
+                        socket={socketRef.current}
+                        user={user}
+                        targetUser={chatTarget}
+                        onClose={() => setChatTarget(null)}
+                    />
+                )}
+            </Box>
+        </MapContext.Provider>
     );
 };
 
