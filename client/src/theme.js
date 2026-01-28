@@ -4,7 +4,7 @@ import { createTheme, alpha } from '@mui/material/styles';
 // In a real M3 setup, we would generate these from a key color source.
 const tonalPalettes = {
     blue: {
-        primary: '#3b82f6',
+        primary: '#ffffff',
         onPrimary: '#ffffff',
         primaryContainer: '#dbeafe',
         onPrimaryContainer: '#1e3a8a',

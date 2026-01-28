@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Box, Button, TextField, Typography, Paper, Alert, Link, Chip, FormControl, InputLabel, Select, MenuItem, OutlinedInput, Stack } from '@mui/material';
 import { registerUser } from '../store/authSlice';
 import { useNavigate } from 'react-router-dom';
+import { green } from '@mui/material/colors';
 
 const INTEREST_CATEGORIES = [
     'Sports & Outdoors',
@@ -70,11 +71,9 @@ const Register = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            bgcolor: '#f5f5f5',
-            overflowY: 'auto',
-            py: 4
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
         }}>
-            <Paper elevation={3} sx={{ p: 4, width: '100%', maxWidth: 500 }}>
+            <Paper elevation={3} sx={{ p: 4, width: '90%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
                 <Typography variant="h4" gutterBottom align="center">
                     Register
                 </Typography>
