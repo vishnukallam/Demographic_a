@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Box, Button, TextField, Typography, Paper, Alert, Link, Chip, FormControl, InputLabel, Select, MenuItem, OutlinedInput, Stack } from '@mui/material';
+import { Box, Button, TextField, Typography, Paper, Alert, Link, Chip, FormControl, InputLabel, Select, MenuItem, OutlinedInput, Stack, InputAdornment, IconButton } from '@mui/material';
 import { registerUser } from '../store/authSlice';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { green } from '@mui/material/colors';
 
 const INTEREST_CATEGORIES = [
@@ -34,6 +35,7 @@ const Register = () => {
     });
 
     const [customInterest, setCustomInterest] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -71,7 +73,7 @@ const Register = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            background: 'linear-gradient(135deg, #87b9f3e7 0%, #c298eb 100%)'
         }}>
             <Paper elevation={3} sx={{ p: 4, width: '90%', maxWidth: 500, maxHeight: '90vh', overflowY: 'auto', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
                 <Typography variant="h4" gutterBottom align="center">
@@ -104,12 +106,25 @@ const Register = () => {
                         fullWidth
                         label="Password"
                         name="password"
-                        type="password"
+                        type={showPassword ? 'text' : 'password'}
                         value={formData.password}
                         onChange={handleChange}
                         margin="normal"
                         required
                         helperText="Minimum 8 characters"
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        aria-label="toggle password visibility"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        edge="end"
+                                    >
+                                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
                     />
                     <TextField
                         fullWidth

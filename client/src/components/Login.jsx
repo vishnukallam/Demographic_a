@@ -61,7 +61,7 @@ const Login = () => {
                     p: 4,
                     textAlign: 'center',
                     maxWidth: 400,
-                    width: '100%',
+                    width: '90%',
                     borderRadius: 3,
                     background: 'rgba(30, 41, 59, 0.7)',
                     backdropFilter: 'blur(10px)',
@@ -70,7 +70,7 @@ const Login = () => {
                 }}
             >
                 <Typography variant="h4" fontWeight="800" gutterBottom sx={{ background: 'linear-gradient(45deg, #38bdf8, #818cf8)', backgroundClip: 'text', textFillColor: 'transparent' }}>
-                    KON-NECT
+                    CONNECT
                 </Typography>
                 <Typography variant="body1" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
                     Connect with people nearby who share your interests.
